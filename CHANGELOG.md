@@ -101,6 +101,11 @@ All notable changes to the AM4 Fleet Helper.
 - Throttled evalFleet: tries all flight counts for first aircraft in two-type fleets
 - Second aircraft mops up residual demand at its own optimal flight count
 
+## v0.20
+- Unified fleet selection with demand-aware evaluation
+- Replaced cost-per-capacity proxy ranking with actual profit simulation (evalOneAt + evalOne)
+- Both budget-constrained and unconstrained paths use the same evaluator
+
 ## v0.10
 - Per-aircraft flight count optimization: tries flight counts 1..maxRot for each aircraft, picks most profitable
 - Seats packed F > J > Y with `ceil(remaining_demand / flights)` — fewer flights = denser configs
@@ -152,8 +157,3 @@ All notable changes to the AM4 Fleet Helper.
 ---
 
 *Versions v0.11–v0.19 were not released; development continued directly from v0.10 to v0.20 after a context restructure.*
-
-## v0.20
-- Unified fleet selection with demand-aware evaluation
-- Replaced cost-per-capacity proxy ranking with actual profit simulation (evalOneAt + evalOne)
-- Both budget-constrained and unconstrained paths use the same evaluator
