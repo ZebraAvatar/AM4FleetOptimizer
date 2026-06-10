@@ -2,7 +2,7 @@
 
 A route profitability optimizer for [Airline Manager 4](https://www.airlinemanager.com/). Given a route's distance, passenger demand, and operating constraints, it finds the fleet of up to two aircraft types that maximizes daily profit — including seat configuration, flight count, and cost breakdown.
 
-**Live tool:** [your GitHub Pages URL here]
+**Live tool:** https://zebraavatar.github.io/AM4FleetOptimizer/
 
 ---
 
