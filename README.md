@@ -87,33 +87,16 @@ Download `index.html` and open it in any browser. No server or build step requir
 
 ---
 
-## Version history
+## Recent changes
 
 | Version | Changes |
 |---------|---------|
-| v0.55 | Sustainable flight count formula (no schedule drift across days); renamed to Fleet Helper |
-| v0.50 | Pre-compiled JSX — removed Babel runtime dependency for faster page load |
-| v0.42 | Expandable runner-up fleets with full config detail; layout cleanup; labels above checkboxes |
-| v0.41 | Variable-width manufacturer dropdown; right-aligned demand header controls |
-| v0.40 | Rep % field validation (clamped ≤ 100); shrunk to 52px width; flex-wrap overflow insurance |
-| v0.39 | Runner-up fleets with Pareto pruning; diagnostic empty states; demand paste (slash/space/comma); recalc dimming; reset button; payback period; purchase price per row; code cleanup |
-| v0.38 | 2× Range (stopovers) checkbox |
-| v0.37 | Flight count changed from floor to ceil — counts flights that can start within op hours |
-| v0.36 | All remaining capacity filled as Y seats (AM4 requires full seat configuration) |
-| v0.35 | Equalize: fixed to use original maxRot, not throttled rot; fixed maxRot display |
-| v0.34 | Equalize: fixed-flight-count approach — all aircraft fly exactly F flights |
-| v0.33 | Equalize mode (demand-split approach); checkbox UI next to manufacturer dropdown |
-| v0.32 | Max Aircraft and Max Airframes constraints |
-| v0.31 | Manufacturer filter dropdown; fuel changed to $/1000 lb; CO₂ changed to $/quota |
-| v0.28 | Throttled flight count passed from fleet selection into Step 2 allocation |
-| v0.27 | Removed false concavity early-exit from two-type throttle loop |
-| v0.26 | CO₂ cost per actual passenger, not aircraft capacity |
-| v0.25 | Budget-constrained search filters to affordable aircraft before ranking |
-| v0.24 | 250ms debounce; require all demand fields; concavity early-exit in evalOne; top 15 candidates |
-| v0.23 | Removed premature capacity-based break conditions from search loops |
-| v0.22 | Both pair orderings in two-type search |
-| v0.21 | Throttled evalFleet — tries all flight counts for first aircraft in two-type fleets |
-| v0.20 | Unified fleet selection with demand-aware evaluation (replaces cost-per-capacity proxy) |
+| v0.55 | Sustainable flight count formula (no schedule drift); renamed to Fleet Helper |
+| v0.50 | Pre-compiled JSX — removed Babel runtime dependency |
+| v0.42 | Expandable runner-up fleets; labels above checkboxes |
+| v0.39 | Runner-ups, diagnostics, demand paste, reset, payback, code cleanup |
+
+[Full changelog →](CHANGELOG.md)
 
 ---
 
