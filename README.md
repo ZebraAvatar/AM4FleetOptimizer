@@ -1,17 +1,19 @@
-# AM4 Fleet Optimizer
+# AM4 Fleet Helper
 
-A route profitability optimizer for [Airline Manager 4](https://www.airlinemanager.com/). Given a route's distance, passenger demand, and operating constraints, it finds the fleet of up to two aircraft types that maximizes daily profit — including seat configuration, flight count, and cost breakdown.
+A fleet planning tool for [Airline Manager 4](https://www.airlinemanager.com/). Given a route's distance, passenger demand, and operating constraints, it recommends a fleet of up to two aircraft types with seat configurations, flight counts, and a cost breakdown.
 
 **Live tool:** https://zebraavatar.github.io/AM4FleetOptimizer/
+
+> **Note:** This tool finds high-quality fleet recommendations, not guaranteed global optima. It searches up to two aircraft types from the top 15 cost-efficient candidates, applies heuristics like throttle search and concavity pruning, and caps flight counts at sustainable daily rates rather than theoretical burst capacity. The results are designed to be practical — fleets a human can actually set up and run day-to-day — not mathematically perfect. Always verify configurations in-game before committing to a purchase.
 
 ---
 
 ## Features
 
-- **Optimal fleet selection** — enumerates single- and two-type fleets, with throttle search to find cases where flying fewer flights per aircraft and using a cheap mopper yields higher profit than running one plane at full utilization
+- **Fleet selection** — enumerates single- and two-type fleets, with throttle search to find cases where flying fewer flights per aircraft and using a cheap mopper yields higher profit than running one plane at full utilization
 - **Accurate cost model** — fuel ($/1000 lb), CO₂ ($/quota, where 1 quota = 1 metric ton), and A-check amortization per flight; CO₂ charged against actual passengers carried, not aircraft capacity
-- **Flight count** based on flights that can *start* within operating hours, not complete — a 1-hour window allows any flight regardless of distance
-- **Equalize mode** — forces all aircraft to fly the same number of flights per day, for simpler real-world scheduling; tries all valid equal flight counts and picks the most profitable
+- **Sustainable flight count** — flights that can start within operating hours, capped at the rate sustainable across consecutive days (no schedule drift)
+- **Equalize mode** — forces all aircraft to fly the same number of flights per day, for simpler scheduling; tries all valid equal flight counts and picks the most profitable
 - **2× Range (stopovers)** — doubles each aircraft's effective range, opening short-haul planes to long routes via intermediate stops
 - **Expandable runner-up fleets** — up to 3 Pareto-optimal alternatives (higher profit or lower fleet cost than any dominated option), each with full config and flight detail
 - **Diagnostic empty states** — specific messages when constraints eliminate all options (range, runway, budget, manufacturer filter)
@@ -53,6 +55,14 @@ fixedCPF = (fuel_lbs/km × speed × fuel$/lb + A-check$ / A-check_hrs) × dist /
 CO2      = CO2_rate × actual_passengers × dist × CO2$/kg
 ```
 
+**Flight count:**
+```
+rot = min(
+    ceil(opHrs × speed / dist),        -- flights that can START in the op window
+    max(1, floor(24 × speed / dist))   -- sustainable daily cap (no schedule drift)
+)
+```
+
 **Fleet selection:** The top 15 aircraft by cost-per-capacity-unit are enumerated as single-type fleets (up to 20 aircraft) and two-type pairs (up to 10 each, both orderings). For each two-type pair, the outer aircraft's flight count is iterated to find the throttle point where the second aircraft's mopping of residual demand yields the best combined profit. Budget and aircraft limits are applied before enumeration.
 
 **Seat allocation:** Seats are packed F → J → Y per flight (most revenue per capacity unit first), with unused capacity always filled as Y seats. Revenue is capped at actual demand.
@@ -65,7 +75,7 @@ CO2      = CO2_rate × actual_passengers × dist × CO2$/kg
 Just use it: **https://zebraavatar.github.io/AM4FleetOptimizer/**
 
 ### Local / self-hosted
-Download `index.html` and open it in any browser. No server, build step, or internet connection required (except to load React/Babel from CDN on first open). To host your own copy on GitHub Pages, fork the repo and enable Pages under Settings → Pages → Deploy from branch → main.
+Download `index.html` and open it in any browser. No server or build step required — just React from CDN. To host your own copy on GitHub Pages, fork the repo and enable Pages under Settings → Pages → Deploy from branch → main.
 
 ---
 
@@ -73,8 +83,37 @@ Download `index.html` and open it in any browser. No server, build step, or inte
 
 - Demand values are the raw game numbers before reputation scaling; set Rep % if yours is below 100
 - CO₂ quota price fluctuates in-game (~100–200); the default of 120 is conservative
-- The optimizer is a helper, not a guarantee — always verify configs in-game before committing to a large purchase
 - Equal mode uses the same fleet as the unequalized result; the optimal fleet for equalized operation may sometimes differ
+
+---
+
+## Version history
+
+| Version | Changes |
+|---------|---------|
+| v0.55 | Sustainable flight count formula (no schedule drift across days); renamed to Fleet Helper |
+| v0.50 | Pre-compiled JSX — removed Babel runtime dependency for faster page load |
+| v0.42 | Expandable runner-up fleets with full config detail; layout cleanup; labels above checkboxes |
+| v0.41 | Variable-width manufacturer dropdown; right-aligned demand header controls |
+| v0.40 | Rep % field validation (clamped ≤ 100); shrunk to 52px width; flex-wrap overflow insurance |
+| v0.39 | Runner-up fleets with Pareto pruning; diagnostic empty states; demand paste (slash/space/comma); recalc dimming; reset button; payback period; purchase price per row; code cleanup |
+| v0.38 | 2× Range (stopovers) checkbox |
+| v0.37 | Flight count changed from floor to ceil — counts flights that can start within op hours |
+| v0.36 | All remaining capacity filled as Y seats (AM4 requires full seat configuration) |
+| v0.35 | Equalize: fixed to use original maxRot, not throttled rot; fixed maxRot display |
+| v0.34 | Equalize: fixed-flight-count approach — all aircraft fly exactly F flights |
+| v0.33 | Equalize mode (demand-split approach); checkbox UI next to manufacturer dropdown |
+| v0.32 | Max Aircraft and Max Airframes constraints |
+| v0.31 | Manufacturer filter dropdown; fuel changed to $/1000 lb; CO₂ changed to $/quota |
+| v0.28 | Throttled flight count passed from fleet selection into Step 2 allocation |
+| v0.27 | Removed false concavity early-exit from two-type throttle loop |
+| v0.26 | CO₂ cost per actual passenger, not aircraft capacity |
+| v0.25 | Budget-constrained search filters to affordable aircraft before ranking |
+| v0.24 | 250ms debounce; require all demand fields; concavity early-exit in evalOne; top 15 candidates |
+| v0.23 | Removed premature capacity-based break conditions from search loops |
+| v0.22 | Both pair orderings in two-type search |
+| v0.21 | Throttled evalFleet — tries all flight counts for first aircraft in two-type fleets |
+| v0.20 | Unified fleet selection with demand-aware evaluation (replaces cost-per-capacity proxy) |
 
 ---
 
