@@ -4472,6 +4472,7 @@ function FleetOptimizer() {
   });
   const [pending, setPending] = useState(false);
   const [altOpen, setAltOpen] = useState(null);
+  const [compareA, setCompareA] = useState(null);
   const timerRef = useRef(null);
   const jRef = useRef(null);
   const fRef = useRef(null);
@@ -4493,6 +4494,7 @@ function FleetOptimizer() {
     setMaxAirframes(null);
     setEqualize(false);
     setStopover(false);
+    setCompareA(null);
   };
   useEffect(() => {
     setPending(true);
@@ -4545,7 +4547,7 @@ function FleetOptimizer() {
       color: "#555",
       marginTop: 2
     }
-  }, "v0.55")), /*#__PURE__*/React.createElement("button", {
+  }, "v0.56")), /*#__PURE__*/React.createElement("button", {
     onClick: resetAll,
     style: {
       background: "none",
@@ -4855,6 +4857,151 @@ function FleetOptimizer() {
       marginTop: 2
     }
   }, "payback ", (s.totalPurchase / s.totalProfit).toFixed(1), " days"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 14
+    }
+  }, !compareA ? /*#__PURE__*/React.createElement("button", {
+    onClick: () => setCompareA({
+      profit: s.totalProfit,
+      cost: s.totalPurchase,
+      fleet: result.fleet.map(f => f.plane.n + (f.qty > 1 ? " ×" + f.qty : "")).join(", ")
+    }),
+    style: {
+      background: "#1a1a1a",
+      border: "1px solid #444",
+      borderRadius: 4,
+      color: "#888",
+      padding: "5px 12px",
+      fontSize: 11,
+      cursor: "pointer",
+      fontFamily: "'DM Mono', monospace",
+      textTransform: "uppercase",
+      letterSpacing: "0.05em"
+    }
+  }, "Compare \u25B8") : (() => {
+    const profitDiff = s.totalProfit - compareA.profit;
+    const costDiff = s.totalPurchase - compareA.cost;
+    const same = Math.abs(profitDiff) < 1 && Math.abs(costDiff) < 1;
+    const currentDominates = profitDiff >= 0 && costDiff <= 0;
+    const aDominates = profitDiff <= 0 && costDiff >= 0;
+    const crossover = !same && !currentDominates && !aDominates ? Math.abs(costDiff / profitDiff) : null;
+    const currentBetter = profitDiff > 0;
+    return /*#__PURE__*/React.createElement("div", {
+      style: {
+        background: "#151515",
+        border: "1px solid #2a2a2a",
+        borderRadius: 6,
+        padding: "12px 14px"
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 10
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 10,
+        color: "#555",
+        textTransform: "uppercase",
+        letterSpacing: "0.05em"
+      }
+    }, "Comparison"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setCompareA(null),
+      style: {
+        background: "none",
+        border: "none",
+        color: "#555",
+        cursor: "pointer",
+        fontSize: 11,
+        fontFamily: "'DM Mono', monospace"
+      }
+    }, "\u2715 Clear")), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 11,
+        fontFamily: "'DM Mono', monospace",
+        display: "grid",
+        gridTemplateColumns: "auto 1fr 1fr",
+        gap: "4px 12px",
+        marginBottom: 10,
+        alignItems: "baseline"
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: "#555"
+      }
+    }, "A"), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: "#888"
+      }
+    }, fmt(compareA.profit), "/day"), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: "#555"
+      }
+    }, fmt(compareA.cost), " fleet"), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: "#5a7",
+        fontSize: 10
+      }
+    }, "\u25B8"), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: "#888"
+      }
+    }, compareA.fleet), /*#__PURE__*/React.createElement("span", null), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: "#555",
+        marginTop: 6
+      }
+    }, "B"), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: "#888",
+        marginTop: 6
+      }
+    }, fmt(s.totalProfit), "/day"), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: "#555",
+        marginTop: 6
+      }
+    }, fmt(s.totalPurchase), " fleet"), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: "#7a5",
+        fontSize: 10
+      }
+    }, "\u25B8"), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: "#888"
+      }
+    }, result.fleet.map(f => f.plane.n + (f.qty > 1 ? " ×" + f.qty : "")).join(", ")), /*#__PURE__*/React.createElement("span", null)), /*#__PURE__*/React.createElement("div", {
+      style: {
+        borderTop: "1px solid #222",
+        paddingTop: 10,
+        fontSize: 12,
+        fontFamily: "'DM Mono', monospace",
+        lineHeight: 1.6
+      }
+    }, same && /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: "#555"
+      }
+    }, "Both scenarios are identical."), !same && currentDominates && /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: "#7c8"
+      }
+    }, "Current (B) is better on both profit and cost \u2014 no crossover."), !same && aDominates && /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: "#c86"
+      }
+    }, "Locked (A) is better on both profit and cost \u2014 no crossover."), crossover != null && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: "#888"
+      }
+    }, currentBetter ? "B earns more" : "A earns more", " (+", fmt(Math.abs(profitDiff)), "/day)", " but ", costDiff > 0 ? "costs more" : "costs less", " (", costDiff > 0 ? "+" : "", fmt(costDiff), ").", " "), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: costDiff > 0 ? "#c86" : "#7c8"
+      }
+    }, costDiff > 0 ? "B recoups in " : "A catches up in ", /*#__PURE__*/React.createElement("strong", null, crossover.toFixed(1), " days"), ", then leads permanently."))));
+  })()), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "grid",
       gridTemplateColumns: "1fr 1fr 1fr",
