@@ -101,6 +101,58 @@ All notable changes to the AM4 Fleet Helper.
 - Throttled evalFleet: tries all flight counts for first aircraft in two-type fleets
 - Second aircraft mops up residual demand at its own optimal flight count
 
+## v0.10
+- Per-aircraft flight count optimization: tries flight counts 1..maxRot for each aircraft, picks most profitable
+- Seats packed F > J > Y with `ceil(remaining_demand / flights)` — fewer flights = denser configs
+- Identical configs merged in table display
+
+## v0.09
+- Display actual flights needed per aircraft batch (not just max flights)
+- Flights column shows `actual/max` when they differ
+- Cost charged only for actual flights flown
+
+## v0.08
+- Budget-constrained enumeration: searches all 1-type and 2-type fleet combinations within fleet budget
+- Top 15 candidates by cost-per-capacity-unit, up to 20-30 qty per type
+- Unconstrained path keeps fast greedy (no budget tradeoff to explore)
+
+## v0.07
+- Max Fleet Price constraint
+- Null-safe inputs: distance and demand start empty, not zero
+
+## v0.06
+- Optimal pricing: autoprice × markup (×1.10 Y / ×1.08 J / ×1.06 F)
+- Max Runway constraint
+- Max Plane Price constraint
+- Empty defaults for all input fields
+
+## v0.05
+- One-way flight model: `floor(opHrs × speed / dist)` instead of round-trip `/(2 × dist)`
+- Demand is route-total, served by one-way flights
+
+## v0.04
+- Fixed seat allocation waste: `Math.ceil` → `Math.floor` for F and J seat batches
+- Prevented oversupply of premium classes burning capacity that should go to economy
+
+## v0.03
+- Last-aircraft cost optimization: switches from cheapest-per-unit to minimum absolute cost for the final aircraft
+- Conservative profitability gate using Y revenue as floor estimate
+
+## v0.02
+- Capacity-decoupled optimizer: rank aircraft by cost per capacity-unit-day
+- Seat allocation separated from aircraft selection (F > J > Y priority)
+- Marginal trim: drops last aircraft if operating cost exceeds revenue
+
+## v0.01
+- Initial build: greedy optimizer with round-trip flight model
+- 309-aircraft database extracted from community spreadsheet
+- Inputs: distance, game mode, fuel price ($/lb), CO₂ price ($/kg), operating hours, Y/J/F demand
+- Dark mono theme (DM Mono), React artifact
+
+---
+
+*Versions v0.11–v0.19 were not released; development continued directly from v0.10 to v0.20 after a context restructure.*
+
 ## v0.20
 - Unified fleet selection with demand-aware evaluation
 - Replaced cost-per-capacity proxy ranking with actual profit simulation (evalOneAt + evalOne)
