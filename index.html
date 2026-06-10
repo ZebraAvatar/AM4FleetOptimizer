@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AM4 Fleet Optimizer</title>
+  <title>AM4 Fleet Helper</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <style>* { box-sizing: border-box; margin: 0; padding: 0; } body { background: #111; }</style>
@@ -4000,7 +4000,7 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
     return fail("The manufacturer filter excludes every qualifying aircraft");
   }
   const planeData = mfrOK.map(p => {
-    const rot = Math.ceil(oH * p.s / d); // flights that can START within op hours
+    const rot = Math.min(Math.ceil(oH * p.s / d), Math.max(1, Math.floor(24 * p.s / d))); // sustainable daily flights
     if (rot <= 0) return null;
     // Fixed costs (fuel + A-check): per flight, independent of passengers
     const fixedCPF = (p.f * p.s * fP_ + p.a / p.h) * d / p.s;
@@ -4291,7 +4291,7 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
     if (eq && totalAC > 1) {
       // Equalize: all aircraft fly exactly the same number of flights.
       // Use original maxRot (from plane speed), not the throttled rot
-      const minMaxRot = entries.reduce((m2, e) => Math.min(m2, Math.ceil(oH * e.plane.s / d)), Infinity);
+      const minMaxRot = entries.reduce((m2, e) => Math.min(m2, Math.min(Math.ceil(oH * e.plane.s / d), Math.max(1, Math.floor(24 * e.plane.s / d)))), Infinity);
       let bestEqProfit = -Infinity,
         bestEqFleet = [],
         bestRemF = fD,
@@ -4331,7 +4331,7 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
                 jSeats: js,
                 ySeats: ys,
                 rot: eqF,
-                maxRot: Math.ceil(oH * plane.s / d),
+                maxRot: Math.min(Math.ceil(oH * plane.s / d), Math.max(1, Math.floor(24 * plane.s / d))),
                 profitPerDay: profit,
                 revenuePerDay: rev,
                 costPerDay: cost
@@ -4539,13 +4539,13 @@ function FleetOptimizer() {
       fontWeight: 500,
       letterSpacing: "0.08em"
     }
-  }, "AM4 FLEET OPTIMIZER"), /*#__PURE__*/React.createElement("div", {
+  }, "AM4 FLEET HELPER"), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
       color: "#555",
       marginTop: 2
     }
-  }, "v0.5")), /*#__PURE__*/React.createElement("button", {
+  }, "v0.6")), /*#__PURE__*/React.createElement("button", {
     onClick: resetAll,
     style: {
       background: "none",
@@ -5140,7 +5140,6 @@ function FleetOptimizer() {
     }
   }, result.reason || "Enter a distance and demand to see the optimal fleet."));
 }
-ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(FleetOptimizer));
     ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(FleetOptimizer));
   </script>
 </body>
