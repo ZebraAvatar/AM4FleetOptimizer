@@ -61,14 +61,11 @@ CO2      = CO2_rate × actual_passengers × dist × CO2$/kg
 
 ## Usage
 
-### GitHub Pages (recommended)
-1. Fork or clone this repo
-2. Rename `am4-fleet-optimizer.html` to `index.html`
-3. Enable GitHub Pages (Settings → Pages → Deploy from branch → main)
-4. Access at `https://yourusername.github.io/your-repo-name`
+### Live
+Just use it: **https://zebraavatar.github.io/AM4FleetOptimizer/**
 
-### Local
-Download `am4-fleet-optimizer.html` and open it in any browser. No server, build step, or internet connection required (except to load React/Babel from CDN on first open).
+### Local / self-hosted
+Download `index.html` and open it in any browser. No server, build step, or internet connection required (except to load React/Babel from CDN on first open). To host your own copy on GitHub Pages, fork the repo and enable Pages under Settings → Pages → Deploy from branch → main.
 
 ---
 
