@@ -87,14 +87,18 @@ Download `index.html` and open it in any browser. No server or build step requir
 
 ---
 
+## Downloads
+
+[StandaloneHelper.html](https://github.com/ZebraAvatar/AM4FleetOptimizer/raw/main/StandaloneHelper.html) — self-contained offline version (no internet required after download)
+
 ## Recent changes
 
 | Version | Changes |
 |---------|---------|
+| v0.62 | Web worker (non-blocking compute); planes.js split (planes.js + StandaloneHelper.html) |
 | v0.61 | Horizon mode (rank fleets by net profit at T days); compact two-row layout with Advanced accordion |
 | v0.60 | Scenario comparison: lock any result as A, compare candidates, crossover analysis |
 | v0.55 | Sustainable flight count formula (no schedule drift); renamed to Fleet Helper |
-| v0.50 | Pre-compiled JSX — removed Babel runtime dependency |
 
 [Full changelog →](CHANGELOG.md)
 
