@@ -3832,7 +3832,8 @@ function NumInput({
       color: "#8a8a8a",
       fontFamily: "'DM Mono', monospace",
       textTransform: "uppercase",
-      letterSpacing: "0.05em"
+      letterSpacing: "0.05em",
+      whiteSpace: "nowrap"
     }
   }, label), /*#__PURE__*/React.createElement("input", {
     ref: setRefs,
@@ -3862,6 +3863,36 @@ function NumInput({
 const n = v => v || 0; // null-safe: treat null as 0
 
 // ── Manufacturer filter dropdown ────────────────────────────────────────────
+const CHECK_TICK = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' stroke='%237c8' stroke-width='2.2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")";
+function Check({
+  checked,
+  onChange,
+  size = 15
+}) {
+  return /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: checked,
+    onChange: onChange,
+    style: {
+      appearance: "none",
+      WebkitAppearance: "none",
+      MozAppearance: "none",
+      width: size,
+      height: size,
+      margin: 0,
+      cursor: "pointer",
+      flexShrink: 0,
+      background: checked ? "#2a3a2a" : "#1a1a1a",
+      backgroundImage: checked ? CHECK_TICK : "none",
+      backgroundPosition: "center",
+      backgroundRepeat: "no-repeat",
+      backgroundSize: `${size - 4}px`,
+      border: checked ? "1px solid #5a7" : "1px solid #333",
+      borderRadius: 3,
+      outline: "none"
+    }
+  });
+}
 function MfrFilter({
   excluded,
   setExcluded
@@ -3895,7 +3926,8 @@ function MfrFilter({
       textTransform: "uppercase",
       letterSpacing: "0.05em",
       display: "block",
-      marginBottom: 3
+      marginBottom: 3,
+      whiteSpace: "nowrap"
     }
   }, "Manufacturers"), /*#__PURE__*/React.createElement("button", {
     onClick: () => setOpen(!open),
@@ -3938,13 +3970,10 @@ function MfrFilter({
       cursor: "pointer",
       fontFamily: "'DM Mono', monospace"
     }
-  }, /*#__PURE__*/React.createElement("input", {
-    type: "checkbox",
+  }, /*#__PURE__*/React.createElement(Check, {
     checked: !excluded.has(m),
     onChange: () => toggle(m),
-    style: {
-      accentColor: "#5a7"
-    }
+    size: 13
   }), m))));
 }
 
@@ -4095,7 +4124,7 @@ function CompPanel({
     }, fmt(Math.abs(cDiff)), " \xF7 ", fmt(Math.abs(pDiff)), "/day = ", cross.toFixed(1), " days"));
   })()));
 }
-function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers) {
+function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers, horizon) {
   const d = n(dist),
     r = n(rep) || 100;
   const yD = Math.floor(n(yDem) * r / 100);
@@ -4302,7 +4331,9 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
       }))
     });
     topFleets.sort((a, b) => b.profit - a.profit);
-    if (topFleets.length > 8) topFleets.length = 8;
+    // Keep a deep frontier: cheap-but-decent fleets (the likely winners at short
+    // horizons) sit at the low-profit end and must not be truncated away.
+    if (topFleets.length > 60) topFleets.length = 60;
   };
 
   // Unified search: enumerate 1-type and 2-type fleets
@@ -4548,6 +4579,63 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
     remY
   } = allocate(rawFleet);
 
+  // ── Horizon mode: rank the whole Pareto frontier by net profit at T days ──
+  // net(T) = profit/day × T − fleet purchase cost. The net-maximizer for any T
+  // always lies on the cost/profit Pareto frontier, so allocating every
+  // surviving frontier fleet and taking the argmax is exact (within the
+  // fleets this search enumerates). Fleets still underwater at T are excluded.
+  const T = horizon > 0 ? horizon : null;
+  if (T) {
+    const cands = topFleets.map(t => {
+      const a = allocate(t.entries);
+      const profit = a.fleet.reduce((s2, f2) => s2 + f2.profitPerDay, 0);
+      const purchase = a.fleet.reduce((s2, f2) => s2 + f2.qty * f2.plane["$"], 0);
+      return {
+        planes: t.planes,
+        purchase,
+        profit,
+        fleet: a.fleet,
+        remF: a.remF,
+        remJ: a.remJ,
+        remY: a.remY,
+        net: profit * T - purchase
+      };
+    }).filter(c => c.profit > 0 && c.net > 0);
+    if (cands.length === 0) return fail(`No fleet pays back within ${fmtN(T)} days — every option is still in the hole`);
+    cands.sort((x, y) => y.net - x.net);
+    const w = cands[0];
+    const hAlternatives = cands.slice(1, 4).map(c => ({
+      planes: c.planes,
+      purchase: c.purchase,
+      profit: c.profit,
+      fleet: c.fleet,
+      net: c.net
+    }));
+    return {
+      fleet: w.fleet,
+      summary: {
+        totalProfit: w.profit,
+        totalRevenue: w.fleet.reduce((s2, f2) => s2 + f2.revenuePerDay, 0),
+        totalCost: w.fleet.reduce((s2, f2) => s2 + f2.costPerDay, 0),
+        totalAircraft: w.fleet.reduce((s2, f2) => s2 + f2.qty, 0),
+        totalPurchase: w.purchase,
+        servedY: yD - Math.max(0, w.remY),
+        servedJ: jD - Math.max(0, w.remJ),
+        servedF: fD - Math.max(0, w.remF),
+        unservedY: Math.max(0, w.remY),
+        unservedJ: Math.max(0, w.remJ),
+        unservedF: Math.max(0, w.remF),
+        yPrice: yP,
+        jPrice: jP,
+        fPrice: fP,
+        totalCapNeeded,
+        alternatives: hAlternatives,
+        horizon: T,
+        net: w.net
+      }
+    };
+  }
+
   // Re-allocate runner-ups so they can show real configs & flight counts
   const alternatives = topFleets.filter(t => t.key !== winnerKey).slice(0, 3).map(t => {
     const a = allocate(t.entries);
@@ -4605,6 +4693,8 @@ function FleetOptimizer() {
   const [maxAirframes, setMaxAirframes] = useState(null);
   const [equalize, setEqualize] = useState(false);
   const [stopovers, setStopover] = useState(false);
+  const [horizon, setHorizon] = useState(null);
+  const [advOpen, setAdvOpen] = useState(false);
   const [result, setResult] = useState({
     fleet: [],
     summary: null
@@ -4634,23 +4724,25 @@ function FleetOptimizer() {
     setMaxAirframes(null);
     setEqualize(false);
     setStopover(false);
+    setHorizon(null);
   };
   useEffect(() => {
     setPending(true);
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      setResult(optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers));
+      setResult(optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers, horizon));
       setPending(false);
       setAltOpen(null);
       setActiveComp(null); // clear active comparison when inputs change; lockedA carries over
     }, 250);
     return () => clearTimeout(timerRef.current);
-  }, [dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers]);
+  }, [dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers, horizon]);
   const s = result.summary;
   const r = n(rep) || 100;
   const yD = Math.floor(n(yDem) * r / 100),
     jD = Math.floor(n(jDem) * r / 100),
     fD = Math.floor(n(fDem) * r / 100);
+  const advCount = [fuelKPrice !== 700, co2Quota !== 120, maxRunway != null, maxPlanePrice != null, maxFleetPrice != null, maxAircraft != null, maxAirframes != null, horizon != null].filter(Boolean).length;
 
   // ── Scenario comparison ──
   // Candidates = current winner + Pareto runner-ups. `id` is a stable object
@@ -4674,6 +4766,7 @@ function FleetOptimizer() {
     const parts = [];
     if (dist) parts.push(`${n(dist)}km`);
     if (excludedMfrs.size) parts.push(`no ${[...excludedMfrs].join("/")} `);
+    if (s && s.horizon) parts.push(`@${fmtN(s.horizon)}d`);
     parts.push(rank === 0 ? "winner" : `alt ${rank}`);
     return parts.join(" · ");
   };
@@ -4762,7 +4855,7 @@ function FleetOptimizer() {
       color: "#555",
       marginTop: 2
     }
-  }, "v0.60")), /*#__PURE__*/React.createElement("button", {
+  }, "v0.61")), /*#__PURE__*/React.createElement("button", {
     onClick: resetAll,
     style: {
       background: "none",
@@ -4779,137 +4872,18 @@ function FleetOptimizer() {
   }, "Reset")), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "grid",
-      gridTemplateColumns: "1fr 1fr",
+      gridTemplateColumns: "1fr auto",
       gap: 10,
-      marginBottom: 14
+      marginBottom: 10
     }
-  }, /*#__PURE__*/React.createElement(NumInput, {
-    label: "Distance (km)",
-    value: dist,
-    onChange: setDist,
-    placeholder: "km"
-  }), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      flexDirection: "column",
-      gap: 3
-    }
-  }, /*#__PURE__*/React.createElement("label", {
-    style: {
-      fontSize: 11,
-      color: "#8a8a8a",
-      fontFamily: "'DM Mono', monospace",
-      textTransform: "uppercase",
-      letterSpacing: "0.05em"
-    }
-  }, "Mode"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      gap: 0
-    }
-  }, ["easy", "realism"].map(m => /*#__PURE__*/React.createElement("button", {
-    key: m,
-    onClick: () => setMode(m),
-    style: {
-      flex: 1,
-      padding: "8px 0",
-      fontSize: 13,
-      fontFamily: "'DM Mono', monospace",
-      cursor: "pointer",
-      background: mode === m ? "#2a3a2a" : "#1a1a1a",
-      color: mode === m ? "#5a7" : "#666",
-      border: mode === m ? "1px solid #5a7" : "1px solid #333",
-      borderRadius: m === "easy" ? "4px 0 0 4px" : "0 4px 4px 0",
-      textTransform: "uppercase",
-      letterSpacing: "0.05em"
-    }
-  }, m))))), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "grid",
-      gridTemplateColumns: "1fr 1fr 1fr",
-      gap: 10,
-      marginBottom: 14
-    }
-  }, /*#__PURE__*/React.createElement(NumInput, {
-    label: "Fuel ($/1000 lb)",
-    value: fuelKPrice,
-    onChange: setFuelKPrice
-  }), /*#__PURE__*/React.createElement(NumInput, {
-    label: "CO\u2082 ($/quota)",
-    value: co2Quota,
-    onChange: setCo2Quota
-  }), /*#__PURE__*/React.createElement(NumInput, {
-    label: "Op Hrs/Day",
-    value: opHrs,
-    onChange: setOpHrs
-  })), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "grid",
-      gridTemplateColumns: "1fr 1fr 1fr",
-      gap: 10,
-      marginBottom: 14
-    }
-  }, /*#__PURE__*/React.createElement(NumInput, {
-    label: "Max Runway (ft)",
-    value: maxRunway,
-    onChange: setMaxRunway,
-    placeholder: "unlimited"
-  }), /*#__PURE__*/React.createElement(NumInput, {
-    label: "Max Plane $",
-    value: maxPlanePrice,
-    onChange: setMaxPlanePrice,
-    placeholder: "unlimited"
-  }), /*#__PURE__*/React.createElement(NumInput, {
-    label: "Max Fleet $",
-    value: maxFleetPrice,
-    onChange: setMaxFleetPrice,
-    placeholder: "unlimited"
-  })), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "grid",
-      gridTemplateColumns: "1fr 1fr",
-      gap: 10,
-      marginBottom: 14
-    }
-  }, /*#__PURE__*/React.createElement(NumInput, {
-    label: "Max Aircraft",
-    value: maxAircraft,
-    onChange: setMaxAircraft,
-    placeholder: "unlimited"
-  }), /*#__PURE__*/React.createElement(NumInput, {
-    label: "Max Airframes",
-    value: maxAirframes,
-    onChange: setMaxAirframes,
-    placeholder: "unlimited"
-  })), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      flexWrap: "wrap",
-      justifyContent: "space-between",
-      alignItems: "flex-end",
-      gap: 10,
-      marginBottom: 6
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 11,
-      color: "#555",
-      textTransform: "uppercase",
-      letterSpacing: "0.05em",
-      alignSelf: "flex-end",
-      paddingBottom: 4
-    }
-  }, "Daily Demand ", r < 100 ? /*#__PURE__*/React.createElement("span", {
-    style: {
-      color: "#c86"
-    }
-  }, "@ ", r, "% rep") : ""), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       flexWrap: "wrap",
       justifyContent: "flex-end",
       gap: 12,
-      alignItems: "flex-end"
+      alignItems: "flex-start",
+      marginBottom: 10
     }
   }, /*#__PURE__*/React.createElement("label", {
     style: {
@@ -4925,19 +4899,19 @@ function FleetOptimizer() {
       color: stopovers ? "#5a7" : "#8a8a8a",
       fontFamily: "'DM Mono', monospace",
       textTransform: "uppercase",
-      letterSpacing: "0.05em"
+      letterSpacing: "0.05em",
+      whiteSpace: "nowrap"
     }
-  }, "2x Range"), /*#__PURE__*/React.createElement("input", {
-    type: "checkbox",
-    checked: stopovers,
-    onChange: e => setStopover(e.target.checked),
+  }, "2x Range"), /*#__PURE__*/React.createElement("div", {
     style: {
-      accentColor: "#5a7",
-      width: 15,
-      height: 15,
-      marginBottom: 7
+      height: 29,
+      display: "flex",
+      alignItems: "center"
     }
-  })), /*#__PURE__*/React.createElement("label", {
+  }, /*#__PURE__*/React.createElement(Check, {
+    checked: stopovers,
+    onChange: e => setStopover(e.target.checked)
+  }))), /*#__PURE__*/React.createElement("label", {
     style: {
       display: "flex",
       flexDirection: "column",
@@ -4951,22 +4925,27 @@ function FleetOptimizer() {
       color: equalize ? "#5a7" : "#8a8a8a",
       fontFamily: "'DM Mono', monospace",
       textTransform: "uppercase",
-      letterSpacing: "0.05em"
+      letterSpacing: "0.05em",
+      whiteSpace: "nowrap"
     }
-  }, "Equalize"), /*#__PURE__*/React.createElement("input", {
-    type: "checkbox",
-    checked: equalize,
-    onChange: e => setEqualize(e.target.checked),
+  }, "Equalize"), /*#__PURE__*/React.createElement("div", {
     style: {
-      accentColor: "#5a7",
-      width: 15,
-      height: 15,
-      marginBottom: 7
+      height: 29,
+      display: "flex",
+      alignItems: "center"
     }
-  })), /*#__PURE__*/React.createElement(MfrFilter, {
+  }, /*#__PURE__*/React.createElement(Check, {
+    checked: equalize,
+    onChange: e => setEqualize(e.target.checked)
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      minWidth: 110
+    }
+  }, /*#__PURE__*/React.createElement(MfrFilter, {
     excluded: excludedMfrs,
     setExcluded: setExcludedMfrs
-  }), /*#__PURE__*/React.createElement("div", {
+  })), /*#__PURE__*/React.createElement("div", {
     style: {
       width: 52
     }
@@ -4977,15 +4956,31 @@ function FleetOptimizer() {
     placeholder: "100",
     small: true,
     max: 100
-  })))), /*#__PURE__*/React.createElement("div", {
+  }))), /*#__PURE__*/React.createElement("div", {
     style: {
-      display: "grid",
-      gridTemplateColumns: "1fr 1fr 1fr",
-      gap: 10,
-      marginBottom: 20
+      display: "flex",
+      flexWrap: "wrap",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: "1.3 0 110px",
+      minWidth: 0,
+      maxWidth: 280
     }
   }, /*#__PURE__*/React.createElement(NumInput, {
-    label: "Economy (Y)",
+    label: "Distance (km)",
+    value: dist,
+    onChange: setDist,
+    placeholder: "km"
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: "1 0 56px",
+      minWidth: 0,
+      maxWidth: 150
+    }
+  }, /*#__PURE__*/React.createElement(NumInput, {
+    label: "Y",
     value: yDem,
     onChange: setYDem,
     placeholder: "0",
@@ -4994,8 +4989,14 @@ function FleetOptimizer() {
       setJDem(vals[0] != null ? vals[0] : null);
       if (vals.length > 1) setFDem(vals[1]);
     }
-  }), /*#__PURE__*/React.createElement(NumInput, {
-    label: "Business (J)",
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: "1 0 56px",
+      minWidth: 0,
+      maxWidth: 150
+    }
+  }, /*#__PURE__*/React.createElement(NumInput, {
+    label: "J",
     value: jDem,
     onChange: setJDem,
     placeholder: "0",
@@ -5004,14 +5005,120 @@ function FleetOptimizer() {
     onOverflow: vals => {
       setFDem(vals[0] != null ? vals[0] : null);
     }
-  }), /*#__PURE__*/React.createElement(NumInput, {
-    label: "First (F)",
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: "1 0 56px",
+      minWidth: 0,
+      maxWidth: 150
+    }
+  }, /*#__PURE__*/React.createElement(NumInput, {
+    label: "F",
     value: fDem,
     onChange: setFDem,
     placeholder: "0",
     innerRef: fRef,
     onOverflow: () => {}
-  })), lockedA && /*#__PURE__*/React.createElement("div", {
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: "1 0 86px",
+      minWidth: 0,
+      maxWidth: 170
+    }
+  }, /*#__PURE__*/React.createElement(NumInput, {
+    label: "Op Hrs/Day",
+    value: opHrs,
+    onChange: setOpHrs
+  })))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 0
+    }
+  }, ["easy", "realism"].map(m => /*#__PURE__*/React.createElement("button", {
+    key: m,
+    onClick: () => setMode(m),
+    style: {
+      flex: 1,
+      padding: "0 10px",
+      fontSize: 12,
+      fontFamily: "'DM Mono', monospace",
+      cursor: "pointer",
+      background: mode === m ? "#2a3a2a" : "#1a1a1a",
+      color: mode === m ? "#5a7" : "#666",
+      border: mode === m ? "1px solid #5a7" : "1px solid #333",
+      borderRadius: m === "easy" ? "4px 4px 0 0" : "0 0 4px 4px",
+      textTransform: "uppercase",
+      letterSpacing: "0.05em"
+    }
+  }, m)))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 20
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    onClick: () => setAdvOpen(!advOpen),
+    style: {
+      fontSize: 11,
+      color: "#666",
+      textTransform: "uppercase",
+      letterSpacing: "0.05em",
+      cursor: "pointer",
+      userSelect: "none",
+      padding: "4px 0"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: "#555"
+    }
+  }, advOpen ? "▾ " : "▸ "), "Advanced", advCount > 0 && /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: "#c86"
+    }
+  }, " \xB7 ", advCount, " set")), advOpen && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr 1fr 1fr",
+      gap: 10,
+      marginTop: 6
+    }
+  }, /*#__PURE__*/React.createElement(NumInput, {
+    label: "Fuel ($/1000 lb)",
+    value: fuelKPrice,
+    onChange: setFuelKPrice
+  }), /*#__PURE__*/React.createElement(NumInput, {
+    label: "CO\u2082 ($/quota)",
+    value: co2Quota,
+    onChange: setCo2Quota
+  }), /*#__PURE__*/React.createElement(NumInput, {
+    label: "Max Runway (ft)",
+    value: maxRunway,
+    onChange: setMaxRunway,
+    placeholder: "unlimited"
+  }), /*#__PURE__*/React.createElement(NumInput, {
+    label: "Max Plane $",
+    value: maxPlanePrice,
+    onChange: setMaxPlanePrice,
+    placeholder: "unlimited"
+  }), /*#__PURE__*/React.createElement(NumInput, {
+    label: "Max Fleet $",
+    value: maxFleetPrice,
+    onChange: setMaxFleetPrice,
+    placeholder: "unlimited"
+  }), /*#__PURE__*/React.createElement(NumInput, {
+    label: "Max Aircraft",
+    value: maxAircraft,
+    onChange: setMaxAircraft,
+    placeholder: "unlimited"
+  }), /*#__PURE__*/React.createElement(NumInput, {
+    label: "Max Airframes",
+    value: maxAirframes,
+    onChange: setMaxAirframes,
+    placeholder: "unlimited"
+  }), /*#__PURE__*/React.createElement(NumInput, {
+    label: "Horizon (days)",
+    value: horizon,
+    onChange: setHorizon,
+    placeholder: "unlimited"
+  }))), lockedA && /*#__PURE__*/React.createElement("div", {
     style: {
       marginBottom: 16
     }
@@ -5115,7 +5222,15 @@ function FleetOptimizer() {
       letterSpacing: "0.06em",
       marginBottom: 8
     }
-  }, "Scenario B \u2014 pick one to compare"), /*#__PURE__*/React.createElement("div", {
+  }, "Scenario B \u2014 pick one to compare"), s.horizon && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      color: "#c86",
+      textTransform: "uppercase",
+      letterSpacing: "0.05em",
+      marginBottom: 8
+    }
+  }, "Ranked by net profit @ ", fmtN(s.horizon), " days \u2014 fleets still in the hole at day ", fmtN(s.horizon), " are hidden"), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "grid",
       gridTemplateColumns: "1fr 1fr",
@@ -5150,7 +5265,13 @@ function FleetOptimizer() {
       fontWeight: 500,
       marginTop: 2
     }
-  }, fmt(s.totalProfit))), /*#__PURE__*/React.createElement("div", {
+  }, fmt(s.totalProfit)), s.horizon && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      color: "#5a7",
+      marginTop: 2
+    }
+  }, "net ", fmt(s.net), " @ ", fmtN(s.horizon), "d")), /*#__PURE__*/React.createElement("div", {
     style: {
       background: "#1a1a1a",
       border: "1px solid #2a2a2a",
@@ -5443,7 +5564,11 @@ function FleetOptimizer() {
     style: {
       color: "#555"
     }
-  }, " \xB7 ", fmt(alt.purchase), " fleet")), compBtn(altCands[i])), altOpen === i && alt.fleet.map((f, k) => /*#__PURE__*/React.createElement("div", {
+  }, " \xB7 ", fmt(alt.purchase), " fleet"), s.horizon && alt.net != null && /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: "#5a7"
+    }
+  }, " \xB7 net ", fmt(alt.net), " @ ", fmtN(s.horizon), "d")), compBtn(altCands[i])), altOpen === i && alt.fleet.map((f, k) => /*#__PURE__*/React.createElement("div", {
     key: k,
     style: {
       fontSize: 11,
