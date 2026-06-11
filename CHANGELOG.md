@@ -2,6 +2,12 @@
 
 All notable changes to the AM4 Fleet Helper.
 
+## v0.62
+- Web worker: optimizer now runs off the main thread, eliminating UI freezes on heavy computations (60-fleet horizon searches). Sync fallback preserved for environments without Worker support
+- Architecture: plane database extracted to `planes.js`; `index.html` fetches it at runtime (GitHub Pages). `StandaloneHelper.html` added as a fully self-contained offline build with P inlined — suitable for download and local use
+- `index-dev.html` established as the RC testing URL: https://zebraavatar.github.io/AM4FleetOptimizer/index-dev.html
+- Computing animation: pulsing "computing..." indicator with CSS fade-in delay (hidden for fast results)
+
 ## v0.61
 - Horizon mode: new "Horizon (days)" input (Advanced). When set, fleets are ranked by net profit at T days (profit/day × T − fleet cost); the winner is the argmax over the full cost/profit Pareto frontier, and fleets still underwater at day T are hidden. If nothing pays back within T, the tool says so instead of showing a winner
 - Net @ T displayed on the winner card and runner-up rows, with a banner stating the ranking basis; scenario labels include the horizon (e.g. "@30d")
