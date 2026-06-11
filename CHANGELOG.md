@@ -2,6 +2,14 @@
 
 All notable changes to the AM4 Fleet Helper.
 
+## v0.61
+- Horizon mode: new "Horizon (days)" input (Advanced). When set, fleets are ranked by net profit at T days (profit/day × T − fleet cost); the winner is the argmax over the full cost/profit Pareto frontier, and fleets still underwater at day T are hidden. If nothing pays back within T, the tool says so instead of showing a winner
+- Net @ T displayed on the winner card and runner-up rows, with a banner stating the ranking basis; scenario labels include the horizon (e.g. "@30d")
+- Pareto frontier retention raised 8 → 60 so cheap short-horizon winners survive; output with horizon unset is unchanged (verified identical to v0.60)
+- Layout: vertical Easy/Realism rail on the right; row 1 = 2x Range, Equalize, Manufacturers, Rep %; row 2 = Distance, Y, J, F, Op Hrs; everything else in a collapsible Advanced section with an "N set" badge when non-default
+- Custom dark checkboxes (toggles + manufacturer list) replacing native white squares
+- Label/layout robustness: labels never wrap, row 2 wraps as whole units only on very narrow screens
+
 ## v0.60
 - Scenario comparison: every candidate (winner + Pareto runner-ups) gets a Lock as A button; the locked scenario persists in its own section across any input change and is excluded from the B options
 - Locked candidate's own button becomes Unlock; Clear A also available on the Scenario A section
