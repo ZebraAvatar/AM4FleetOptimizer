@@ -2,6 +2,12 @@
 
 All notable changes to the AM4 Fleet Helper.
 
+## v0.60
+- Scenario comparison: every candidate (winner + Pareto runner-ups) gets a Lock as A button; the locked scenario persists in its own section across any input change and is excluded from the B options
+- Locked candidate's own button becomes Unlock; Clear A also available on the Scenario A section
+- Compare vs A on any remaining candidate opens a single crossover-analysis panel beneath it (toggle; resets when inputs change)
+- Verdicts: dominance ("A/B is immediately and permanently more profitable.") or crossover ("It will take Scenario A/B X.X days to be more profitable.") with the math shown: Δcost ÷ Δprofit/day = X.X days
+
 ## v0.55
 - Sustainable flight count formula: `min(ceil(opHrs × speed / dist), max(1, floor(24 × speed / dist)))` — caps at the rate sustainable across consecutive days, preventing schedule drift
 - Renamed from "Fleet Optimizer" to "Fleet Helper"
