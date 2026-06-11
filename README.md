@@ -91,10 +91,10 @@ Download `index.html` and open it in any browser. No server or build step requir
 
 | Version | Changes |
 |---------|---------|
+| v0.60 | Scenario comparison: lock any result as A, compare candidates, crossover analysis |
 | v0.55 | Sustainable flight count formula (no schedule drift); renamed to Fleet Helper |
 | v0.50 | Pre-compiled JSX — removed Babel runtime dependency |
 | v0.42 | Expandable runner-up fleets; labels above checkboxes |
-| v0.39 | Runner-ups, diagnostics, demand paste, reset, payback, code cleanup |
 
 [Full changelog →](CHANGELOG.md)
 
