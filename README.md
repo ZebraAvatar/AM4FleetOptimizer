@@ -95,7 +95,7 @@ Download `index.html` and open it in any browser. No server or build step requir
 
 | Version | Changes |
 |---------|---------|
-| v0.62 | Web worker (non-blocking compute); planes.js split (planes.js + StandaloneHelper.html) |
+| v0.6.2 | Web worker (non-blocking compute); planes.js split (planes.js + StandaloneHelper.html) |
 | v0.61 | Horizon mode (rank fleets by net profit at T days); compact two-row layout with Advanced accordion |
 | v0.60 | Scenario comparison: lock any result as A, compare candidates, crossover analysis |
 | v0.55 | Sustainable flight count formula (no schedule drift); renamed to Fleet Helper |
