@@ -444,7 +444,7 @@ function CompPanel({
     }, fmt(Math.abs(cDiff)), " \xF7 ", fmt(Math.abs(pDiff)), "/day = ", cross.toFixed(1), " days"));
   })()));
 }
-function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers, horizon) {
+function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers, horizon, singleType) {
   const d = n(dist),
     r = n(rep) || 100;
   const yD = Math.floor(n(yDem) * r / 100);
@@ -686,8 +686,8 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
     }
   }
 
-  // Two-type fleets (skip if max airframes = 1)
-  if (mAf <= 0 || mAf >= 2) {
+  // Two-type fleets (skip if max airframes = 1, or single-type mode)
+  if (!singleType && (mAf <= 0 || mAf >= 2)) {
     for (let i = 0; i < top.length; i++) {
       for (let j = 0; j < top.length; j++) {
         if (j === i) continue;
@@ -1023,6 +1023,7 @@ function FleetOptimizer() {
   const [maxAircraft, setMaxAircraft] = useState(null);
   const [maxAirframes, setMaxAirframes] = useState(null);
   const [equalize, setEqualize] = useState(false);
+  const [singleType, setSingleType] = useState(false);
   const [stopovers, setStopover] = useState(false);
   const [horizon, setHorizon] = useState(null);
   const [advOpen, setAdvOpen] = useState(false);
@@ -1058,6 +1059,7 @@ function FleetOptimizer() {
     setMaxAirframes(null);
     setEqualize(false);
     setStopover(false);
+    setSingleType(false);
     setHorizon(null);
   };
   useEffect(() => {
@@ -1082,7 +1084,7 @@ function FleetOptimizer() {
     setPending(true);
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      const params = [dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, [...excludedMfrs], maxAircraft, maxAirframes, equalize, stopovers, horizon];
+      const params = [dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, [...excludedMfrs], maxAircraft, maxAirframes, equalize, stopovers, horizon, singleType];
       if (workerRef.current) {
         genRef.current++;
         setComputing(true);
@@ -1099,7 +1101,7 @@ function FleetOptimizer() {
       }
     }, 250);
     return () => clearTimeout(timerRef.current);
-  }, [dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers, horizon]);
+  }, [dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers, horizon, singleType]);
   const s = result.summary;
   const r = n(rep) || 100;
   const yD = Math.floor(n(yDem) * r / 100),
@@ -1221,7 +1223,7 @@ function FleetOptimizer() {
       color: "#555",
       marginTop: rem(2)
     }
-  }, "v0.6.3-rc.1")), /*#__PURE__*/React.createElement("button", {
+  }, "v0.6.3-rc.2")), /*#__PURE__*/React.createElement("button", {
     onClick: resetAll,
     style: {
       background: "none",
@@ -1303,6 +1305,32 @@ function FleetOptimizer() {
   }, /*#__PURE__*/React.createElement(Check, {
     checked: equalize,
     onChange: e => setEqualize(e.target.checked)
+  }))), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      gap: rem(3),
+      cursor: "pointer"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: rem(11),
+      color: singleType ? "#5a7" : "#8a8a8a",
+      fontFamily: "'DM Mono', monospace",
+      textTransform: "uppercase",
+      letterSpacing: "0.05em",
+      whiteSpace: "nowrap"
+    }
+  }, "Single Type"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      height: rem(29),
+      display: "flex",
+      alignItems: "center"
+    }
+  }, /*#__PURE__*/React.createElement(Check, {
+    checked: singleType,
+    onChange: e => setSingleType(e.target.checked)
   }))), /*#__PURE__*/React.createElement("div", {
     style: {
       flex: 1,
