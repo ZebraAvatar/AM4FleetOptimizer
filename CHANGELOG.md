@@ -2,7 +2,7 @@
 
 All notable changes to the AM4 Fleet Helper.
 
-## v0.62
+## v0.6.2
 - Web worker: optimizer now runs off the main thread, eliminating UI freezes on heavy computations (60-fleet horizon searches). Sync fallback preserved for environments without Worker support
 - Architecture: plane database extracted to `planes.js`; `index.html` fetches it at runtime (GitHub Pages). `StandaloneHelper.html` added as a fully self-contained offline build with P inlined — suitable for download and local use
 - `index-dev.html` established as the RC testing URL: https://zebraavatar.github.io/AM4FleetOptimizer/index-dev.html
