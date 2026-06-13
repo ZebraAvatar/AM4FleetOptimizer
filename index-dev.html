@@ -84,7 +84,7 @@ function NumInput({
         setRaw(String(nums[0]));
         onChange(nums[0]);
         if (nums.length > 1) onOverflow(nums.slice(1));
-        if (advanceRef && advanceRef.current) advanceRef.current.focus();
+        if (nums.length === 1 && advanceRef && advanceRef.current) advanceRef.current.focus();
       } else {
         setRaw(s.replace(/[\s/,]+/g, ""));
       }
@@ -1223,7 +1223,7 @@ function FleetOptimizer() {
       color: "#555",
       marginTop: rem(2)
     }
-  }, "v0.6.3-rc.2")), /*#__PURE__*/React.createElement("button", {
+  }, "v0.6.3-rc.3")), /*#__PURE__*/React.createElement("button", {
     onClick: resetAll,
     style: {
       background: "none",
