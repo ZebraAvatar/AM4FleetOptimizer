@@ -778,7 +778,65 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
       remY = yD;
     const fleet = [];
     const totalAC = entries.reduce((s, e) => s + e.qty, 0);
-    if (eq && totalAC > 1) {
+    if (singleType) {
+      // Uniform fleet: all copies share identical config & flight count
+      const entry = entries[0];
+      const {
+        plane,
+        fixedCPF,
+        co2PP,
+        qty
+      } = entry;
+      const maxRot = Math.min(Math.ceil(oH * plane.s / d), Math.max(1, Math.floor(24 * plane.s / d)));
+      let bestProfit = 0,
+        best = null;
+      for (let f = 1; f <= maxRot; f++) {
+        const fs = Math.min(Math.floor(plane.p / 3), fD > 0 ? Math.ceil(fD / (qty * f)) : 0);
+        const capF = plane.p - 3 * fs;
+        const js = Math.min(Math.floor(capF / 2), jD > 0 ? Math.ceil(jD / (qty * f)) : 0);
+        const ys = capF - 2 * js;
+        if (fs + js + ys === 0) continue;
+        const sF = Math.min(qty * fs * f, fD),
+          sJ = Math.min(qty * js * f, jD),
+          sY = Math.min(qty * ys * f, yD);
+        const rev = sF * fP + sJ * jP + sY * yP;
+        const cost = qty * fixedCPF * f + co2PP * (sF + sJ + sY);
+        const profit = rev - cost;
+        if (profit > bestProfit) {
+          bestProfit = profit;
+          best = {
+            fs,
+            js,
+            ys,
+            f,
+            sF,
+            sJ,
+            sY,
+            rev,
+            cost,
+            profit,
+            maxRot
+          };
+        } else if (best && profit < best.profit) break;
+      }
+      if (best) {
+        fleet.push({
+          plane,
+          qty,
+          fSeats: best.fs,
+          jSeats: best.js,
+          ySeats: best.ys,
+          rot: best.f,
+          maxRot: best.maxRot,
+          profitPerDay: best.profit,
+          revenuePerDay: best.rev,
+          costPerDay: best.cost
+        });
+        remF -= best.sF;
+        remJ -= best.sJ;
+        remY -= best.sY;
+      }
+    } else if (eq && totalAC > 1) {
       // Equalize: all aircraft fly exactly the same number of flights.
       // Use original maxRot (from plane speed), not the throttled rot
       const minMaxRot = entries.reduce((m2, e) => Math.min(m2, Math.min(Math.ceil(oH * e.plane.s / d), Math.max(1, Math.floor(24 * e.plane.s / d)))), Infinity);
@@ -1223,7 +1281,7 @@ function FleetOptimizer() {
       color: "#555",
       marginTop: rem(2)
     }
-  }, "v0.6.3-rc.3")), /*#__PURE__*/React.createElement("button", {
+  }, "v0.6.3-rc.4")), /*#__PURE__*/React.createElement("button", {
     onClick: resetAll,
     style: {
       background: "none",
