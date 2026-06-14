@@ -195,6 +195,7 @@ function MfrFilter({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const ref = useRef(null);
+  const searchRef = useRef(null);
   const count = excluded.size;
   const toggle = m => {
     const next = new Set(excluded);
@@ -206,6 +207,7 @@ function MfrFilter({
       setQuery("");
       return;
     }
+    if (searchRef.current) searchRef.current.focus();
     const handler = e => {
       if (ref.current && !ref.current.contains(e.target)) setOpen(false);
     };
@@ -213,7 +215,7 @@ function MfrFilter({
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
   const q = query.trim().toLowerCase();
-  const shown = q ? MFRS.filter(m => m.toLowerCase().includes(q)) : MFRS;
+  const shown = q ? MFRS.filter(m => m.toLowerCase().startsWith(q)) : MFRS;
   return /*#__PURE__*/React.createElement("div", {
     ref: ref,
     style: {
@@ -290,6 +292,7 @@ function MfrFilter({
       whiteSpace: "nowrap"
     }
   }, txt))), /*#__PURE__*/React.createElement("input", {
+    ref: searchRef,
     type: "text",
     value: query,
     placeholder: "Search\u2026",
@@ -1318,7 +1321,7 @@ function FleetOptimizer() {
       color: "#555",
       marginTop: rem(2)
     }
-  }, "v0.6.4-rc.3")), /*#__PURE__*/React.createElement("button", {
+  }, "v0.6.4-rc.4")), /*#__PURE__*/React.createElement("button", {
     onClick: resetAll,
     style: {
       background: "none",
