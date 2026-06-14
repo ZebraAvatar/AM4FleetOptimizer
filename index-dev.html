@@ -105,7 +105,7 @@ function NumInput({
     onChange(v);
   };
   const handleKey = e => {
-    if (e.key === " " && advanceRef && advanceRef.current) {
+    if ((e.key === " " || e.key === "Enter") && advanceRef && advanceRef.current) {
       e.preventDefault();
       advanceRef.current.focus();
     }
@@ -133,6 +133,7 @@ function NumInput({
     ref: setRefs,
     type: "text",
     inputMode: "decimal",
+    enterKeyHint: advanceRef ? "next" : "done",
     value: raw,
     placeholder: placeholder || "",
     onChange: e => sync(e.target.value),
@@ -1281,7 +1282,7 @@ function FleetOptimizer() {
       color: "#555",
       marginTop: rem(2)
     }
-  }, "v0.6.3")), /*#__PURE__*/React.createElement("button", {
+  }, "v0.6.4-rc.1")), /*#__PURE__*/React.createElement("button", {
     onClick: resetAll,
     style: {
       background: "none",
