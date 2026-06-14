@@ -14,10 +14,11 @@ A fleet planning tool for [Airline Manager 4](https://www.airlinemanager.com/). 
 - **Accurate cost model** — fuel ($/1000 lb), CO₂ ($/quota, where 1 quota = 1 metric ton), and A-check amortization per flight; CO₂ charged against actual passengers carried, not aircraft capacity
 - **Sustainable flight count** — flights that can start within operating hours, capped at the rate sustainable across consecutive days (no schedule drift)
 - **Equalize mode** — forces all aircraft to fly the same number of flights per day, for simpler scheduling; tries all valid equal flight counts and picks the most profitable
+- **Single Type mode** — restricts the fleet to one aircraft type with a uniform seat configuration and flight count across all copies, modelling real-world fleet assignment
 - **2× Range (stopovers)** — doubles each aircraft's effective range, opening short-haul planes to long routes via intermediate stops
 - **Expandable runner-up fleets** — up to 3 Pareto-optimal alternatives (higher profit or lower fleet cost than any dominated option), each with full config and flight detail
 - **Diagnostic empty states** — specific messages when constraints eliminate all options (range, runway, budget, manufacturer filter)
-- **Demand paste** — paste `620/270/42` or `620 270 42` into the Economy field to fill all three demand boxes at once; Space/Tab advances between fields
+- **Demand paste** — paste `620/270/42`, `620 270 42`, or newline-separated demand copied from the game into the Economy field to fill all three demand boxes at once; Space/Tab advances between fields
 
 ### Constraints
 | Field | Description |
@@ -95,6 +96,7 @@ Download `index.html` and open it in any browser. No server or build step requir
 
 | Version | Changes |
 |---------|---------|
+| v0.6.3 | Single Type mode (uniform config); manufacturer Select All/None; demand paste fix; px-to-rem conversion |
 | v0.6.2 | Web worker (non-blocking compute); planes.js split (planes.js + StandaloneHelper.html) |
 | v0.61 | Horizon mode (rank fleets by net profit at T days); compact two-row layout with Advanced accordion |
 | v0.60 | Scenario comparison: lock any result as A, compare candidates, crossover analysis |
