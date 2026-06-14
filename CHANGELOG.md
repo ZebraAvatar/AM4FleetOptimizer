@@ -2,6 +2,13 @@
 
 All notable changes to the AM4 Fleet Helper.
 
+## v0.6.3
+- Single Type mode: new checkbox forces a single aircraft type with uniform seat configuration and flight count across all copies — models real-world fleet assignment where an airline flies one subfleet type on each route
+- Manufacturer filter: sticky Select All / Select None buttons at the top of the dropdown
+- Demand paste fix: pasting multiline demand from the game (one number per line) no longer drops the J value; a focus-advance race condition caused the middle field to appear blank despite correct state
+- Label: "Horizon (days)" renamed to "Best fleet after (days)" for clarity
+- Full px-to-rem conversion: all inline pixel values converted to rem units for consistent scaling; Advanced grid uses `auto-fit` to wrap instead of overflow on narrow screens
+
 ## v0.6.2
 - Web worker: optimizer now runs off the main thread, eliminating UI freezes on heavy computations (60-fleet horizon searches). Sync fallback preserved for environments without Worker support
 - Architecture: plane database extracted to `planes.js`; `index.html` fetches it at runtime (GitHub Pages). `StandaloneHelper.html` added as a fully self-contained offline build with P inlined — suitable for download and local use
