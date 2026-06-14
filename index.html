@@ -47,6 +47,8 @@ const fmt = n => {
   return `$${Math.round(n)}`;
 };
 const fmtN = n => n.toLocaleString();
+// px-equivalent values expressed in rem so the UI scales with root font size
+const rem = (...v) => v.map(x => x === 0 ? "0" : `${x / 16}rem`).join(" ");
 const MFRS = [...new Set(P.map(p => p.m))].sort();
 
 // ── Number input that allows empty state ────────────────────────────────────
@@ -82,7 +84,7 @@ function NumInput({
         setRaw(String(nums[0]));
         onChange(nums[0]);
         if (nums.length > 1) onOverflow(nums.slice(1));
-        if (advanceRef && advanceRef.current) advanceRef.current.focus();
+        if (nums.length === 1 && advanceRef && advanceRef.current) advanceRef.current.focus();
       } else {
         setRaw(s.replace(/[\s/,]+/g, ""));
       }
@@ -116,11 +118,11 @@ function NumInput({
     style: {
       display: "flex",
       flexDirection: "column",
-      gap: 3
+      gap: rem(3)
     }
   }, label && /*#__PURE__*/React.createElement("label", {
     style: {
-      fontSize: 11,
+      fontSize: rem(11),
       color: "#8a8a8a",
       fontFamily: "'DM Mono', monospace",
       textTransform: "uppercase",
@@ -138,13 +140,13 @@ function NumInput({
     onBlur: handleBlur,
     style: {
       background: "#1a1a1a",
-      border: "1px solid #333",
-      borderRadius: 4,
+      border: "0.0625rem solid #333",
+      borderRadius: rem(4),
       color: "#e0e0e0",
-      padding: small ? "5px 8px" : "8px 10px",
-      fontSize: small ? 13 : 14,
+      padding: small ? rem(5, 8) : rem(8, 10),
+      fontSize: small ? rem(13) : rem(14),
       fontFamily: "'DM Mono', monospace",
-      width: small ? 52 : "100%",
+      width: small ? rem(52) : "100%",
       boxSizing: "border-box",
       outline: "none"
     },
@@ -169,8 +171,8 @@ function Check({
       appearance: "none",
       WebkitAppearance: "none",
       MozAppearance: "none",
-      width: size,
-      height: size,
+      width: rem(size),
+      height: rem(size),
       margin: 0,
       cursor: "pointer",
       flexShrink: 0,
@@ -178,9 +180,9 @@ function Check({
       backgroundImage: checked ? CHECK_TICK : "none",
       backgroundPosition: "center",
       backgroundRepeat: "no-repeat",
-      backgroundSize: `${size - 4}px`,
-      border: checked ? "1px solid #5a7" : "1px solid #333",
-      borderRadius: 3,
+      backgroundSize: rem(size - 4),
+      border: checked ? "0.0625rem solid #5a7" : "0.0625rem solid #333",
+      borderRadius: rem(3),
       outline: "none"
     }
   });
@@ -212,24 +214,24 @@ function MfrFilter({
     }
   }, /*#__PURE__*/React.createElement("label", {
     style: {
-      fontSize: 11,
+      fontSize: rem(11),
       color: "#8a8a8a",
       fontFamily: "'DM Mono', monospace",
       textTransform: "uppercase",
       letterSpacing: "0.05em",
       display: "block",
-      marginBottom: 3,
+      marginBottom: rem(3),
       whiteSpace: "nowrap"
     }
   }, "Manufacturers"), /*#__PURE__*/React.createElement("button", {
     onClick: () => setOpen(!open),
     style: {
       background: "#1a1a1a",
-      border: "1px solid #333",
-      borderRadius: 4,
+      border: "0.0625rem solid #333",
+      borderRadius: rem(4),
       color: count > 0 ? "#c86" : "#666",
-      padding: "5px 8px",
-      fontSize: 13,
+      padding: rem(5, 8),
+      fontSize: rem(13),
       fontFamily: "'DM Mono', monospace",
       cursor: "pointer",
       width: "100%",
@@ -241,23 +243,49 @@ function MfrFilter({
       position: "absolute",
       top: "100%",
       right: 0,
-      minWidth: 230,
+      minWidth: rem(230),
       zIndex: 10,
       background: "#1a1a1a",
-      border: "1px solid #333",
-      borderRadius: 4,
-      maxHeight: 260,
+      border: "0.0625rem solid #333",
+      borderRadius: rem(4),
+      maxHeight: rem(260),
       overflowY: "auto",
-      marginTop: 2
+      marginTop: rem(2)
     }
-  }, MFRS.map(m => /*#__PURE__*/React.createElement("label", {
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: rem(6),
+      padding: rem(6, 10),
+      borderBottom: "0.0625rem solid #2a2a2a",
+      position: "sticky",
+      top: 0,
+      background: "#1a1a1a",
+      zIndex: 1
+    }
+  }, [["Select All", () => setExcluded(new Set())], ["Select None", () => setExcluded(new Set(MFRS))]].map(([txt, fn]) => /*#__PURE__*/React.createElement("button", {
+    key: txt,
+    onClick: fn,
+    style: {
+      flex: 1,
+      background: "#222",
+      border: "0.0625rem solid #333",
+      borderRadius: rem(3),
+      color: "#888",
+      padding: rem(3, 8),
+      fontSize: rem(10),
+      fontFamily: "'DM Mono', monospace",
+      cursor: "pointer",
+      whiteSpace: "nowrap"
+    }
+  }, txt))), MFRS.map(m => /*#__PURE__*/React.createElement("label", {
     key: m,
     style: {
       display: "flex",
       alignItems: "center",
-      gap: 8,
-      padding: "6px 10px",
-      fontSize: 12,
+      gap: rem(8),
+      padding: rem(6, 10),
+      fontSize: rem(12),
       color: excluded.has(m) ? "#555" : "#ccc",
       cursor: "pointer",
       fontFamily: "'DM Mono', monospace"
@@ -292,26 +320,26 @@ function CompPanel({
   return /*#__PURE__*/React.createElement("div", {
     style: {
       background: "#0e1a0e",
-      border: "1px solid #1e3a1e",
-      borderRadius: 7,
-      padding: "12px 14px",
-      marginTop: 10
+      border: "0.0625rem solid #1e3a1e",
+      borderRadius: rem(7),
+      padding: rem(12, 14),
+      marginTop: rem(10)
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 10,
+      fontSize: rem(10),
       color: "#3a6a3a",
       textTransform: "uppercase",
       letterSpacing: "0.06em",
-      marginBottom: 10
+      marginBottom: rem(10)
     }
   }, "Crossover analysis"), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "grid",
-      gridTemplateColumns: "14px 1fr 1fr",
-      gap: "2px 10px",
-      fontSize: 11,
-      marginBottom: 10
+      gridTemplateColumns: `${rem(14)} 1fr 1fr`,
+      gap: rem(2, 10),
+      fontSize: rem(11),
+      marginBottom: rem(10)
     }
   }, /*#__PURE__*/React.createElement("span", {
     style: {
@@ -341,9 +369,9 @@ function CompPanel({
     }
   }, fmt(b.profit), "/day \xB7 ", fmt(b.fleetCost))), /*#__PURE__*/React.createElement("div", {
     style: {
-      borderTop: "1px solid #1a2a1a",
-      paddingTop: 10,
-      fontSize: 12,
+      borderTop: "0.0625rem solid #1a2a1a",
+      paddingTop: rem(10),
+      fontSize: rem(12),
       lineHeight: 1.7
     }
   }, same && /*#__PURE__*/React.createElement("span", {
@@ -364,7 +392,7 @@ function CompPanel({
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       style: {
         color: "#888",
-        marginBottom: 8
+        marginBottom: rem(8)
       }
     }, "B ", bMore ? /*#__PURE__*/React.createElement("span", {
       style: {
@@ -385,14 +413,14 @@ function CompPanel({
     }, "earns ", fmt(Math.abs(pDiff)), "/day less"), "."), /*#__PURE__*/React.createElement("div", {
       style: {
         background: "#0a180a",
-        border: "1px solid #1e3a1e",
-        borderRadius: 5,
-        padding: "8px 12px"
+        border: "0.0625rem solid #1e3a1e",
+        borderRadius: rem(5),
+        padding: rem(8, 12)
       }
     }, bMore && bEarns && /*#__PURE__*/React.createElement(React.Fragment, null, "It will take Scenario B ", /*#__PURE__*/React.createElement("strong", {
       style: {
         color: "#7c8",
-        fontSize: 16
+        fontSize: rem(16)
       }
     }, cross.toFixed(1)), " ", /*#__PURE__*/React.createElement("span", {
       style: {
@@ -401,7 +429,7 @@ function CompPanel({
     }, "days"), " to be more profitable."), !bMore && !bEarns && /*#__PURE__*/React.createElement(React.Fragment, null, "It will take Scenario A ", /*#__PURE__*/React.createElement("strong", {
       style: {
         color: "#c86",
-        fontSize: 16
+        fontSize: rem(16)
       }
     }, cross.toFixed(1)), " ", /*#__PURE__*/React.createElement("span", {
       style: {
@@ -409,14 +437,14 @@ function CompPanel({
       }
     }, "days"), " to be more profitable.")), /*#__PURE__*/React.createElement("div", {
       style: {
-        fontSize: 10,
+        fontSize: rem(10),
         color: "#3a5a3a",
-        marginTop: 6
+        marginTop: rem(6)
       }
     }, fmt(Math.abs(cDiff)), " \xF7 ", fmt(Math.abs(pDiff)), "/day = ", cross.toFixed(1), " days"));
   })()));
 }
-function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers, horizon) {
+function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers, horizon, singleType) {
   const d = n(dist),
     r = n(rep) || 100;
   const yD = Math.floor(n(yDem) * r / 100);
@@ -658,8 +686,8 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
     }
   }
 
-  // Two-type fleets (skip if max airframes = 1)
-  if (mAf <= 0 || mAf >= 2) {
+  // Two-type fleets (skip if max airframes = 1, or single-type mode)
+  if (!singleType && (mAf <= 0 || mAf >= 2)) {
     for (let i = 0; i < top.length; i++) {
       for (let j = 0; j < top.length; j++) {
         if (j === i) continue;
@@ -750,7 +778,65 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
       remY = yD;
     const fleet = [];
     const totalAC = entries.reduce((s, e) => s + e.qty, 0);
-    if (eq && totalAC > 1) {
+    if (singleType) {
+      // Uniform fleet: all copies share identical config & flight count
+      const entry = entries[0];
+      const {
+        plane,
+        fixedCPF,
+        co2PP,
+        qty
+      } = entry;
+      const maxRot = Math.min(Math.ceil(oH * plane.s / d), Math.max(1, Math.floor(24 * plane.s / d)));
+      let bestProfit = 0,
+        best = null;
+      for (let f = 1; f <= maxRot; f++) {
+        const fs = Math.min(Math.floor(plane.p / 3), fD > 0 ? Math.ceil(fD / (qty * f)) : 0);
+        const capF = plane.p - 3 * fs;
+        const js = Math.min(Math.floor(capF / 2), jD > 0 ? Math.ceil(jD / (qty * f)) : 0);
+        const ys = capF - 2 * js;
+        if (fs + js + ys === 0) continue;
+        const sF = Math.min(qty * fs * f, fD),
+          sJ = Math.min(qty * js * f, jD),
+          sY = Math.min(qty * ys * f, yD);
+        const rev = sF * fP + sJ * jP + sY * yP;
+        const cost = qty * fixedCPF * f + co2PP * (sF + sJ + sY);
+        const profit = rev - cost;
+        if (profit > bestProfit) {
+          bestProfit = profit;
+          best = {
+            fs,
+            js,
+            ys,
+            f,
+            sF,
+            sJ,
+            sY,
+            rev,
+            cost,
+            profit,
+            maxRot
+          };
+        } else if (best && profit < best.profit) break;
+      }
+      if (best) {
+        fleet.push({
+          plane,
+          qty,
+          fSeats: best.fs,
+          jSeats: best.js,
+          ySeats: best.ys,
+          rot: best.f,
+          maxRot: best.maxRot,
+          profitPerDay: best.profit,
+          revenuePerDay: best.rev,
+          costPerDay: best.cost
+        });
+        remF -= best.sF;
+        remJ -= best.sJ;
+        remY -= best.sY;
+      }
+    } else if (eq && totalAC > 1) {
       // Equalize: all aircraft fly exactly the same number of flights.
       // Use original maxRot (from plane speed), not the throttled rot
       const minMaxRot = entries.reduce((m2, e) => Math.min(m2, Math.min(Math.ceil(oH * e.plane.s / d), Math.max(1, Math.floor(24 * e.plane.s / d)))), Infinity);
@@ -995,6 +1081,7 @@ function FleetOptimizer() {
   const [maxAircraft, setMaxAircraft] = useState(null);
   const [maxAirframes, setMaxAirframes] = useState(null);
   const [equalize, setEqualize] = useState(false);
+  const [singleType, setSingleType] = useState(false);
   const [stopovers, setStopover] = useState(false);
   const [horizon, setHorizon] = useState(null);
   const [advOpen, setAdvOpen] = useState(false);
@@ -1030,6 +1117,7 @@ function FleetOptimizer() {
     setMaxAirframes(null);
     setEqualize(false);
     setStopover(false);
+    setSingleType(false);
     setHorizon(null);
   };
   useEffect(() => {
@@ -1054,7 +1142,7 @@ function FleetOptimizer() {
     setPending(true);
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      const params = [dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, [...excludedMfrs], maxAircraft, maxAirframes, equalize, stopovers, horizon];
+      const params = [dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, [...excludedMfrs], maxAircraft, maxAirframes, equalize, stopovers, horizon, singleType];
       if (workerRef.current) {
         genRef.current++;
         setComputing(true);
@@ -1071,7 +1159,7 @@ function FleetOptimizer() {
       }
     }, 250);
     return () => clearTimeout(timerRef.current);
-  }, [dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers, horizon]);
+  }, [dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers, horizon, singleType]);
   const s = result.summary;
   const r = n(rep) || 100;
   const yD = Math.floor(n(yDem) * r / 100),
@@ -1142,11 +1230,11 @@ function FleetOptimizer() {
       },
       style: {
         background: "none",
-        border: `1px solid ${color}`,
-        borderRadius: 4,
+        border: `0.0625rem solid ${color}`,
+        borderRadius: rem(4),
         color,
-        padding: "3px 8px",
-        fontSize: 10,
+        padding: rem(3, 8),
+        fontSize: rem(10),
         fontFamily: "'DM Mono', monospace",
         cursor: "pointer",
         whiteSpace: "nowrap",
@@ -1163,8 +1251,8 @@ function FleetOptimizer() {
       background: "#111",
       color: "#d4d4d4",
       fontFamily: "'DM Mono', 'Fira Code', 'Consolas', monospace",
-      padding: "16px 12px",
-      maxWidth: 720,
+      padding: rem(16, 12),
+      maxWidth: rem(720),
       margin: "0 auto"
     }
   }, /*#__PURE__*/React.createElement("link", {
@@ -1172,9 +1260,9 @@ function FleetOptimizer() {
     rel: "stylesheet"
   }), /*#__PURE__*/React.createElement("div", {
     style: {
-      borderBottom: "1px solid #2a2a2a",
-      paddingBottom: 10,
-      marginBottom: 16,
+      borderBottom: "0.0625rem solid #2a2a2a",
+      paddingBottom: rem(10),
+      marginBottom: rem(16),
       display: "flex",
       justifyContent: "space-between",
       alignItems: "flex-end"
@@ -1182,26 +1270,26 @@ function FleetOptimizer() {
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h1", {
     style: {
       margin: 0,
-      fontSize: 16,
+      fontSize: rem(16),
       color: "#5a7",
       fontWeight: 500,
       letterSpacing: "0.08em"
     }
   }, "AM4 FLEET HELPER"), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 11,
+      fontSize: rem(11),
       color: "#555",
-      marginTop: 2
+      marginTop: rem(2)
     }
-  }, "v0.6.2")), /*#__PURE__*/React.createElement("button", {
+  }, "v0.6.3")), /*#__PURE__*/React.createElement("button", {
     onClick: resetAll,
     style: {
       background: "none",
-      border: "1px solid #333",
-      borderRadius: 4,
+      border: "0.0625rem solid #333",
+      borderRadius: rem(4),
       color: "#666",
-      padding: "4px 10px",
-      fontSize: 11,
+      padding: rem(4, 10),
+      fontSize: rem(11),
       cursor: "pointer",
       fontFamily: "'DM Mono', monospace",
       textTransform: "uppercase",
@@ -1211,29 +1299,29 @@ function FleetOptimizer() {
     style: {
       display: "grid",
       gridTemplateColumns: "1fr auto",
-      gap: 10,
-      marginBottom: 10
+      gap: rem(10),
+      marginBottom: rem(10)
     }
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       flexWrap: "wrap",
       justifyContent: "flex-end",
-      gap: 12,
+      gap: rem(12),
       alignItems: "flex-start",
-      marginBottom: 10
+      marginBottom: rem(10)
     }
   }, /*#__PURE__*/React.createElement("label", {
     style: {
       display: "flex",
       flexDirection: "column",
       alignItems: "center",
-      gap: 3,
+      gap: rem(3),
       cursor: "pointer"
     }
   }, /*#__PURE__*/React.createElement("span", {
     style: {
-      fontSize: 11,
+      fontSize: rem(11),
       color: stopovers ? "#5a7" : "#8a8a8a",
       fontFamily: "'DM Mono', monospace",
       textTransform: "uppercase",
@@ -1242,7 +1330,7 @@ function FleetOptimizer() {
     }
   }, "2x Range"), /*#__PURE__*/React.createElement("div", {
     style: {
-      height: 29,
+      height: rem(29),
       display: "flex",
       alignItems: "center"
     }
@@ -1254,12 +1342,12 @@ function FleetOptimizer() {
       display: "flex",
       flexDirection: "column",
       alignItems: "center",
-      gap: 3,
+      gap: rem(3),
       cursor: "pointer"
     }
   }, /*#__PURE__*/React.createElement("span", {
     style: {
-      fontSize: 11,
+      fontSize: rem(11),
       color: equalize ? "#5a7" : "#8a8a8a",
       fontFamily: "'DM Mono', monospace",
       textTransform: "uppercase",
@@ -1268,24 +1356,50 @@ function FleetOptimizer() {
     }
   }, "Equalize"), /*#__PURE__*/React.createElement("div", {
     style: {
-      height: 29,
+      height: rem(29),
       display: "flex",
       alignItems: "center"
     }
   }, /*#__PURE__*/React.createElement(Check, {
     checked: equalize,
     onChange: e => setEqualize(e.target.checked)
+  }))), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      gap: rem(3),
+      cursor: "pointer"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: rem(11),
+      color: singleType ? "#5a7" : "#8a8a8a",
+      fontFamily: "'DM Mono', monospace",
+      textTransform: "uppercase",
+      letterSpacing: "0.05em",
+      whiteSpace: "nowrap"
+    }
+  }, "Single Type"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      height: rem(29),
+      display: "flex",
+      alignItems: "center"
+    }
+  }, /*#__PURE__*/React.createElement(Check, {
+    checked: singleType,
+    onChange: e => setSingleType(e.target.checked)
   }))), /*#__PURE__*/React.createElement("div", {
     style: {
       flex: 1,
-      minWidth: 110
+      minWidth: rem(110)
     }
   }, /*#__PURE__*/React.createElement(MfrFilter, {
     excluded: excludedMfrs,
     setExcluded: setExcludedMfrs
   })), /*#__PURE__*/React.createElement("div", {
     style: {
-      width: 52
+      width: rem(52)
     }
   }, /*#__PURE__*/React.createElement(NumInput, {
     label: "Rep %",
@@ -1298,13 +1412,13 @@ function FleetOptimizer() {
     style: {
       display: "flex",
       flexWrap: "wrap",
-      gap: 10
+      gap: rem(10)
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      flex: "1.3 0 110px",
+      flex: `1.3 0 ${rem(110)}`,
       minWidth: 0,
-      maxWidth: 280
+      maxWidth: rem(280)
     }
   }, /*#__PURE__*/React.createElement(NumInput, {
     label: "Distance (km)",
@@ -1313,9 +1427,9 @@ function FleetOptimizer() {
     placeholder: "km"
   })), /*#__PURE__*/React.createElement("div", {
     style: {
-      flex: "1 0 56px",
+      flex: `1 0 ${rem(56)}`,
       minWidth: 0,
-      maxWidth: 150
+      maxWidth: rem(150)
     }
   }, /*#__PURE__*/React.createElement(NumInput, {
     label: "Y",
@@ -1329,9 +1443,9 @@ function FleetOptimizer() {
     }
   })), /*#__PURE__*/React.createElement("div", {
     style: {
-      flex: "1 0 56px",
+      flex: `1 0 ${rem(56)}`,
       minWidth: 0,
-      maxWidth: 150
+      maxWidth: rem(150)
     }
   }, /*#__PURE__*/React.createElement(NumInput, {
     label: "J",
@@ -1345,9 +1459,9 @@ function FleetOptimizer() {
     }
   })), /*#__PURE__*/React.createElement("div", {
     style: {
-      flex: "1 0 56px",
+      flex: `1 0 ${rem(56)}`,
       minWidth: 0,
-      maxWidth: 150
+      maxWidth: rem(150)
     }
   }, /*#__PURE__*/React.createElement(NumInput, {
     label: "F",
@@ -1358,9 +1472,9 @@ function FleetOptimizer() {
     onOverflow: () => {}
   })), /*#__PURE__*/React.createElement("div", {
     style: {
-      flex: "1 0 86px",
+      flex: `1 0 ${rem(86)}`,
       minWidth: 0,
-      maxWidth: 170
+      maxWidth: rem(170)
     }
   }, /*#__PURE__*/React.createElement(NumInput, {
     label: "Op Hrs/Day",
@@ -1377,31 +1491,31 @@ function FleetOptimizer() {
     onClick: () => setMode(m),
     style: {
       flex: 1,
-      padding: "0 10px",
-      fontSize: 12,
+      padding: rem(0, 10),
+      fontSize: rem(12),
       fontFamily: "'DM Mono', monospace",
       cursor: "pointer",
       background: mode === m ? "#2a3a2a" : "#1a1a1a",
       color: mode === m ? "#5a7" : "#666",
-      border: mode === m ? "1px solid #5a7" : "1px solid #333",
-      borderRadius: m === "easy" ? "4px 4px 0 0" : "0 0 4px 4px",
+      border: mode === m ? "0.0625rem solid #5a7" : "0.0625rem solid #333",
+      borderRadius: m === "easy" ? rem(4, 4, 0, 0) : rem(0, 0, 4, 4),
       textTransform: "uppercase",
       letterSpacing: "0.05em"
     }
   }, m)))), /*#__PURE__*/React.createElement("div", {
     style: {
-      marginBottom: 20
+      marginBottom: rem(20)
     }
   }, /*#__PURE__*/React.createElement("div", {
     onClick: () => setAdvOpen(!advOpen),
     style: {
-      fontSize: 11,
+      fontSize: rem(11),
       color: "#666",
       textTransform: "uppercase",
       letterSpacing: "0.05em",
       cursor: "pointer",
       userSelect: "none",
-      padding: "4px 0"
+      padding: rem(4, 0)
     }
   }, /*#__PURE__*/React.createElement("span", {
     style: {
@@ -1414,9 +1528,9 @@ function FleetOptimizer() {
   }, " \xB7 ", advCount, " set")), advOpen && /*#__PURE__*/React.createElement("div", {
     style: {
       display: "grid",
-      gridTemplateColumns: "1fr 1fr 1fr 1fr",
-      gap: 10,
-      marginTop: 6
+      gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${rem(164)}), 1fr))`,
+      gap: rem(10),
+      marginTop: rem(6)
     }
   }, /*#__PURE__*/React.createElement(NumInput, {
     label: "Fuel ($/1000 lb)",
@@ -1452,24 +1566,24 @@ function FleetOptimizer() {
     onChange: setMaxAirframes,
     placeholder: "unlimited"
   }), /*#__PURE__*/React.createElement(NumInput, {
-    label: "Horizon (days)",
+    label: "Best fleet after (days)",
     value: horizon,
     onChange: setHorizon,
     placeholder: "unlimited"
   }))), lockedA && /*#__PURE__*/React.createElement("div", {
     style: {
-      marginBottom: 16
+      marginBottom: rem(16)
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       justifyContent: "space-between",
       alignItems: "center",
-      marginBottom: 6
+      marginBottom: rem(6)
     }
   }, /*#__PURE__*/React.createElement("span", {
     style: {
-      fontSize: 10,
+      fontSize: rem(10),
       color: "#a55",
       textTransform: "uppercase",
       letterSpacing: "0.06em"
@@ -1478,56 +1592,56 @@ function FleetOptimizer() {
     onClick: clearA,
     style: {
       background: "none",
-      border: "1px solid #a55",
-      borderRadius: 4,
+      border: "0.0625rem solid #a55",
+      borderRadius: rem(4),
       color: "#a55",
-      padding: "3px 10px",
-      fontSize: 11,
+      padding: rem(3, 10),
+      fontSize: rem(11),
       fontFamily: "'DM Mono', monospace",
       cursor: "pointer"
     }
   }, "Clear A")), /*#__PURE__*/React.createElement("div", {
     style: {
       background: "#1a1a1a",
-      border: "1px solid #a5534444",
-      borderRadius: 7,
-      padding: "11px 13px"
+      border: "0.0625rem solid #a5534444",
+      borderRadius: rem(7),
+      padding: rem(11, 13)
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 10,
+      fontSize: rem(10),
       color: "#a55",
       textTransform: "uppercase",
       letterSpacing: "0.06em",
-      marginBottom: 3
+      marginBottom: rem(3)
     }
   }, lockedA.label), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 19,
+      fontSize: rem(19),
       color: "#7c8",
       fontWeight: 500,
       lineHeight: 1
     }
   }, fmt(lockedA.profit), /*#__PURE__*/React.createElement("span", {
     style: {
-      fontSize: 10,
+      fontSize: rem(10),
       color: "#555",
-      marginLeft: 3
+      marginLeft: rem(3)
     }
   }, "/day")), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 11,
+      fontSize: rem(11),
       color: "#555",
-      marginTop: 3
+      marginTop: rem(3)
     }
   }, fmt(lockedA.fleetCost), " fleet", lockedA.profit > 0 && lockedA.fleetCost > 0 ? ` · payback ${(lockedA.fleetCost / lockedA.profit).toFixed(1)}d` : ""), /*#__PURE__*/React.createElement("div", {
     style: {
-      marginTop: 8
+      marginTop: rem(8)
     }
   }, lockedA.fleet.map((f, k) => /*#__PURE__*/React.createElement("div", {
     key: k,
     style: {
-      fontSize: 11,
+      fontSize: rem(11),
       color: "#777",
       lineHeight: 1.8
     }
@@ -1550,14 +1664,14 @@ function FleetOptimizer() {
   }, " \xB7 ", f.rot, f.maxRot && f.rot < f.maxRot ? `/${f.maxRot}` : "", "/d \xB7 ", fmt(f.profitPerDay), "/day")))))), computing && /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
-      padding: "20px 0",
+      padding: rem(20, 0),
       animation: "compFadeIn .15s ease .15s both"
     }
   }, /*#__PURE__*/React.createElement("span", {
     style: {
       fontFamily: "'DM Mono', monospace",
       color: "#5a7",
-      fontSize: 13,
+      fontSize: rem(13),
       letterSpacing: "0.05em"
     }
   }, "computing", /*#__PURE__*/React.createElement("span", {
@@ -1579,92 +1693,92 @@ function FleetOptimizer() {
     }
   }, lockedA && /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 10,
+      fontSize: rem(10),
       color: "#5a7",
       textTransform: "uppercase",
       letterSpacing: "0.06em",
-      marginBottom: 8
+      marginBottom: rem(8)
     }
   }, "Scenario B \u2014 pick one to compare"), s.horizon && /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 10,
+      fontSize: rem(10),
       color: "#c86",
       textTransform: "uppercase",
       letterSpacing: "0.05em",
-      marginBottom: 8
+      marginBottom: rem(8)
     }
   }, "Ranked by net profit @ ", fmtN(s.horizon), " days \u2014 fleets still in the hole at day ", fmtN(s.horizon), " are hidden"), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "grid",
       gridTemplateColumns: "1fr 1fr",
-      gap: 8,
-      marginBottom: 14
+      gap: rem(8),
+      marginBottom: rem(14)
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       background: "#1a2a1a",
-      border: "1px solid #2a4a2a",
-      borderRadius: 6,
-      padding: "10px 12px"
+      border: "0.0625rem solid #2a4a2a",
+      borderRadius: rem(6),
+      padding: rem(10, 12)
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       justifyContent: "space-between",
       alignItems: "flex-start",
-      gap: 8
+      gap: rem(8)
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 10,
+      fontSize: rem(10),
       color: "#5a7",
       textTransform: "uppercase",
       letterSpacing: "0.08em"
     }
   }, "Daily Profit"), winnerCand && compBtn(winnerCand)), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 22,
+      fontSize: rem(22),
       color: "#7c8",
       fontWeight: 500,
-      marginTop: 2
+      marginTop: rem(2)
     }
   }, fmt(s.totalProfit)), s.horizon && /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 10,
+      fontSize: rem(10),
       color: "#5a7",
-      marginTop: 2
+      marginTop: rem(2)
     }
   }, "net ", fmt(s.net), " @ ", fmtN(s.horizon), "d")), /*#__PURE__*/React.createElement("div", {
     style: {
       background: "#1a1a1a",
-      border: "1px solid #2a2a2a",
-      borderRadius: 6,
-      padding: "10px 12px"
+      border: "0.0625rem solid #2a2a2a",
+      borderRadius: rem(6),
+      padding: rem(10, 12)
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 10,
+      fontSize: rem(10),
       color: "#888",
       textTransform: "uppercase",
       letterSpacing: "0.08em"
     }
   }, "Fleet Cost"), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 22,
+      fontSize: rem(22),
       color: "#d4d4d4",
       fontWeight: 500,
-      marginTop: 2
+      marginTop: rem(2)
     }
   }, fmt(s.totalPurchase)), s.totalProfit > 0 && s.totalPurchase > 0 && /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 10,
+      fontSize: rem(10),
       color: "#5a7",
-      marginTop: 2
+      marginTop: rem(2)
     }
   }, "payback ", (s.totalPurchase / s.totalProfit).toFixed(1), " days"))), lockedA && activeComp && winnerCand && activeComp.id === winnerCand.id && /*#__PURE__*/React.createElement("div", {
     style: {
-      marginTop: -4,
-      marginBottom: 14
+      marginTop: rem(-4),
+      marginBottom: rem(14)
     }
   }, /*#__PURE__*/React.createElement(CompPanel, {
     a: lockedA,
@@ -1675,92 +1789,92 @@ function FleetOptimizer() {
     style: {
       display: "grid",
       gridTemplateColumns: "1fr 1fr 1fr",
-      gap: 8,
-      marginBottom: 14
+      gap: rem(8),
+      marginBottom: rem(14)
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       background: "#1a1a1a",
-      border: "1px solid #2a2a2a",
-      borderRadius: 6,
-      padding: "8px 10px"
+      border: "0.0625rem solid #2a2a2a",
+      borderRadius: rem(6),
+      padding: rem(8, 10)
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 10,
+      fontSize: rem(10),
       color: "#888",
       textTransform: "uppercase"
     }
   }, "Revenue"), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 14,
+      fontSize: rem(14),
       color: "#d4d4d4",
-      marginTop: 2
+      marginTop: rem(2)
     }
   }, fmt(s.totalRevenue))), /*#__PURE__*/React.createElement("div", {
     style: {
       background: "#1a1a1a",
-      border: "1px solid #2a2a2a",
-      borderRadius: 6,
-      padding: "8px 10px"
+      border: "0.0625rem solid #2a2a2a",
+      borderRadius: rem(6),
+      padding: rem(8, 10)
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 10,
+      fontSize: rem(10),
       color: "#888",
       textTransform: "uppercase"
     }
   }, "Costs"), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 14,
+      fontSize: rem(14),
       color: "#c66",
-      marginTop: 2
+      marginTop: rem(2)
     }
   }, fmt(s.totalCost))), /*#__PURE__*/React.createElement("div", {
     style: {
       background: "#1a1a1a",
-      border: "1px solid #2a2a2a",
-      borderRadius: 6,
-      padding: "8px 10px"
+      border: "0.0625rem solid #2a2a2a",
+      borderRadius: rem(6),
+      padding: rem(8, 10)
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 10,
+      fontSize: rem(10),
       color: "#888",
       textTransform: "uppercase"
     }
   }, "Aircraft"), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 14,
+      fontSize: rem(14),
       color: "#d4d4d4",
-      marginTop: 2
+      marginTop: rem(2)
     }
   }, s.totalAircraft))), /*#__PURE__*/React.createElement("div", {
     style: {
       background: "#1a1a1a",
-      border: "1px solid #2a2a2a",
-      borderRadius: 6,
-      padding: "10px 12px",
-      marginBottom: 14
+      border: "0.0625rem solid #2a2a2a",
+      borderRadius: rem(6),
+      padding: rem(10, 12),
+      marginBottom: rem(14)
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 10,
+      fontSize: rem(10),
       color: "#888",
       textTransform: "uppercase",
-      marginBottom: 6
+      marginBottom: rem(6)
     }
   }, "Demand Coverage"), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "grid",
       gridTemplateColumns: "1fr 1fr 1fr",
-      gap: 8
+      gap: rem(8)
     }
   }, [["Y", s.servedY, yD, s.unservedY], ["J", s.servedJ, jD, s.unservedJ], ["F", s.servedF, fD, s.unservedF]].map(([cls, served, total, unserved]) => /*#__PURE__*/React.createElement("div", {
     key: cls
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 12,
+      fontSize: rem(12),
       color: "#aaa"
     }
   }, cls, ": ", /*#__PURE__*/React.createElement("span", {
@@ -1773,23 +1887,23 @@ function FleetOptimizer() {
     }
   }, "/", fmtN(total))), /*#__PURE__*/React.createElement("div", {
     style: {
-      marginTop: 3,
-      height: 3,
+      marginTop: rem(3),
+      height: rem(3),
       background: "#222",
-      borderRadius: 2
+      borderRadius: rem(2)
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       height: "100%",
-      borderRadius: 2,
+      borderRadius: rem(2),
       width: `${total > 0 ? Math.min(100, served / total * 100) : 0}%`,
       background: unserved > 0 ? "#c86" : "#5a7"
     }
   })))))), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 11,
+      fontSize: rem(11),
       color: "#555",
-      marginBottom: 14
+      marginBottom: rem(14)
     }
   }, "Tickets: Y=", fmt(s.yPrice), " \xB7 J=", fmt(s.jPrice), " \xB7 F=", fmt(s.fPrice), /*#__PURE__*/React.createElement("br", null), "Capacity needed: ", fmtN(s.totalCapNeeded), " units/day (", fmtN(yD), "\xD71 + ", fmtN(jD), "\xD72 + ", fmtN(fD), "\xD73)"), result.fleet.length > 0 && /*#__PURE__*/React.createElement("div", {
     style: {
@@ -1799,19 +1913,19 @@ function FleetOptimizer() {
     style: {
       width: "100%",
       borderCollapse: "collapse",
-      fontSize: 12
+      fontSize: rem(12)
     }
   }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", {
     style: {
-      borderBottom: "1px solid #333"
+      borderBottom: "0.0625rem solid #333"
     }
   }, ["Aircraft", "Qty", "Config", "Flights", "Profit/Day", "Cost/Day"].map(h => /*#__PURE__*/React.createElement("th", {
     key: h,
     style: {
       textAlign: "left",
-      padding: "6px 8px",
+      padding: rem(6, 8),
       color: "#666",
-      fontSize: 10,
+      fontSize: rem(10),
       textTransform: "uppercase",
       letterSpacing: "0.05em",
       fontWeight: 400
@@ -1819,11 +1933,11 @@ function FleetOptimizer() {
   }, h)))), /*#__PURE__*/React.createElement("tbody", null, result.fleet.map((f, i) => /*#__PURE__*/React.createElement("tr", {
     key: i,
     style: {
-      borderBottom: "1px solid #1e1e1e"
+      borderBottom: "0.0625rem solid #1e1e1e"
     }
   }, /*#__PURE__*/React.createElement("td", {
     style: {
-      padding: "8px 8px"
+      padding: rem(8, 8)
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
@@ -1833,16 +1947,16 @@ function FleetOptimizer() {
   }, f.plane.n), /*#__PURE__*/React.createElement("div", {
     style: {
       color: "#555",
-      fontSize: 10
+      fontSize: rem(10)
     }
   }, f.plane.m, " \xB7 ", fmt(f.plane["$"]), f.qty > 1 ? " ea" : "")), /*#__PURE__*/React.createElement("td", {
     style: {
-      padding: "8px",
+      padding: rem(8),
       color: "#aaa"
     }
   }, "\xD7", f.qty), /*#__PURE__*/React.createElement("td", {
     style: {
-      padding: "8px"
+      padding: rem(8)
     }
   }, /*#__PURE__*/React.createElement("span", {
     style: {
@@ -1859,11 +1973,11 @@ function FleetOptimizer() {
   }, " ", f.fSeats, "F"), /*#__PURE__*/React.createElement("div", {
     style: {
       color: "#444",
-      fontSize: 10
+      fontSize: rem(10)
     }
   }, f.ySeats + 2 * f.jSeats + 3 * f.fSeats, "/", f.plane.p, " cap")), /*#__PURE__*/React.createElement("td", {
     style: {
-      padding: "8px",
+      padding: rem(8),
       color: "#888"
     }
   }, f.rot, f.maxRot && f.rot < f.maxRot ? /*#__PURE__*/React.createElement("span", {
@@ -1872,43 +1986,43 @@ function FleetOptimizer() {
     }
   }, "/", f.maxRot) : "", "/d"), /*#__PURE__*/React.createElement("td", {
     style: {
-      padding: "8px",
+      padding: rem(8),
       color: "#7c8"
     }
   }, fmt(f.profitPerDay)), /*#__PURE__*/React.createElement("td", {
     style: {
-      padding: "8px",
+      padding: rem(8),
       color: "#c66",
-      fontSize: 11
+      fontSize: rem(11)
     }
   }, fmt(f.costPerDay))))))), s.alternatives && s.alternatives.length > 0 && /*#__PURE__*/React.createElement("div", {
     style: {
-      marginTop: 14
+      marginTop: rem(14)
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 10,
+      fontSize: rem(10),
       color: "#666",
       textTransform: "uppercase",
       letterSpacing: "0.05em",
-      marginBottom: 4
+      marginBottom: rem(4)
     }
   }, "Runner-up fleets"), s.alternatives.map((alt, i) => /*#__PURE__*/React.createElement("div", {
     key: i,
     style: {
-      borderBottom: "1px solid #1a1a1a"
+      borderBottom: "0.0625rem solid #1a1a1a"
     }
   }, /*#__PURE__*/React.createElement("div", {
     onClick: () => setAltOpen(altOpen === i ? null : i),
     style: {
-      fontSize: 11,
+      fontSize: rem(11),
       color: "#888",
-      padding: "6px 0",
+      padding: rem(6, 0),
       cursor: "pointer",
       userSelect: "none",
       display: "flex",
       alignItems: "center",
-      gap: 8
+      gap: rem(8)
     }
   }, /*#__PURE__*/React.createElement("span", {
     style: {
@@ -1934,9 +2048,9 @@ function FleetOptimizer() {
   }, " \xB7 net ", fmt(alt.net), " @ ", fmtN(s.horizon), "d")), compBtn(altCands[i])), altOpen === i && alt.fleet.map((f, k) => /*#__PURE__*/React.createElement("div", {
     key: k,
     style: {
-      fontSize: 11,
+      fontSize: rem(11),
       color: "#777",
-      padding: "0 0 6px 18px"
+      padding: rem(0, 0, 6, 18)
     }
   }, "\xD7", f.qty, " ", f.plane.n, " \u2014 ", /*#__PURE__*/React.createElement("span", {
     style: {
@@ -1956,7 +2070,7 @@ function FleetOptimizer() {
     }
   }, " \xB7 ", f.rot, f.maxRot && f.rot < f.maxRot ? `/${f.maxRot}` : "", "/d \xB7 ", fmt(f.profitPerDay), "/day"))), lockedA && activeComp && activeComp.id === alt && /*#__PURE__*/React.createElement("div", {
     style: {
-      paddingBottom: 8
+      paddingBottom: rem(8)
     }
   }, /*#__PURE__*/React.createElement(CompPanel, {
     a: lockedA,
@@ -1967,14 +2081,14 @@ function FleetOptimizer() {
     style: {
       color: "#666",
       textAlign: "center",
-      padding: 30
+      padding: rem(30)
     }
   }, "No profitable fleet found for these parameters.")), !s && /*#__PURE__*/React.createElement("div", {
     style: {
       color: result.reason ? "#c86" : "#555",
       textAlign: "center",
-      padding: 30,
-      fontSize: 13
+      padding: rem(30),
+      fontSize: rem(13)
     }
   }, result.reason || "Enter a distance and demand to see the optimal fleet.")));
 }
