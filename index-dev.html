@@ -193,6 +193,7 @@ function MfrFilter({
   setExcluded
 }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const ref = useRef(null);
   const count = excluded.size;
   const toggle = m => {
@@ -201,13 +202,18 @@ function MfrFilter({
     setExcluded(next);
   };
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setQuery("");
+      return;
+    }
     const handler = e => {
       if (ref.current && !ref.current.contains(e.target)) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
+  const q = query.trim().toLowerCase();
+  const shown = q ? MFRS.filter(m => m.toLowerCase().includes(q)) : MFRS;
   return /*#__PURE__*/React.createElement("div", {
     ref: ref,
     style: {
@@ -255,14 +261,18 @@ function MfrFilter({
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      display: "flex",
-      gap: rem(6),
       padding: rem(6, 10),
       borderBottom: "0.0625rem solid #2a2a2a",
       position: "sticky",
       top: 0,
       background: "#1a1a1a",
       zIndex: 1
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: rem(6),
+      marginBottom: rem(6)
     }
   }, [["Select All", () => setExcluded(new Set())], ["Select None", () => setExcluded(new Set(MFRS))]].map(([txt, fn]) => /*#__PURE__*/React.createElement("button", {
     key: txt,
@@ -279,7 +289,33 @@ function MfrFilter({
       cursor: "pointer",
       whiteSpace: "nowrap"
     }
-  }, txt))), MFRS.map(m => /*#__PURE__*/React.createElement("label", {
+  }, txt))), /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    value: query,
+    placeholder: "Search\u2026",
+    onChange: e => setQuery(e.target.value),
+    style: {
+      background: "#141414",
+      border: "0.0625rem solid #333",
+      borderRadius: rem(3),
+      color: "#ccc",
+      padding: rem(4, 8),
+      fontSize: rem(12),
+      fontFamily: "'DM Mono', monospace",
+      width: "100%",
+      boxSizing: "border-box",
+      outline: "none"
+    },
+    onFocus: e => e.target.style.borderColor = "#5a7",
+    onBlur: e => e.target.style.borderColor = "#333"
+  })), shown.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: rem(10),
+      fontSize: rem(12),
+      color: "#666",
+      fontFamily: "'DM Mono', monospace"
+    }
+  }, "No matches") : shown.map(m => /*#__PURE__*/React.createElement("label", {
     key: m,
     style: {
       display: "flex",
@@ -1282,7 +1318,7 @@ function FleetOptimizer() {
       color: "#555",
       marginTop: rem(2)
     }
-  }, "v0.6.4-rc.2")), /*#__PURE__*/React.createElement("button", {
+  }, "v0.6.4-rc.3")), /*#__PURE__*/React.createElement("button", {
     onClick: resetAll,
     style: {
       background: "none",
