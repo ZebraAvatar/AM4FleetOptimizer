@@ -2,6 +2,14 @@
 
 All notable changes to the AM4 Fleet Helper.
 
+## v0.6.4
+- Airframe consolidation: each aircraft type now collapses to the fewest airframes flying their maximum daily rotations. The winner could previously be padded with redundant copies each flying a fraction of what it could — e.g. 7 planes at 8 rotations where 4 at 14 served the same demand — when the profit/day gap was negligible but the extra purchase cost was not. Consolidation is profit-neutral and always on
+- Uniform seat configuration per type: all copies of an aircraft type now share one seat layout, so the recommended fleet is clean to set up in-game; the efficiency cost is negligible in realistic demand ratios
+- Single Type is now a one-tap shortcut for Max Aircraft Types = 1, and clears itself when that field is set to anything else; the separate single-type allocator is retired in favour of the always-on consolidation + uniform-config path
+- Manufacturer search: a search box in the dropdown's sticky header, autofocused when the dropdown opens (mobile keyboard pops up); prefix match (typing "t" shows Tupolev, not Aérospatiale); Enter toggles the top filtered result
+- Mobile input flow: demand fields show a "next" key instead of a checkmark, and Enter advances focus like Space; the Distance field now tabs into Economy
+- Relabels: "Max Airframes" → "Max Aircraft Types" (it was always the distinct-type cap); "Max Aircraft" → "Max # Aircraft"
+
 ## v0.6.3
 - Single Type mode: new checkbox forces a single aircraft type with uniform seat configuration and flight count across all copies — models real-world fleet assignment where an airline flies one subfleet type on each route
 - Manufacturer filter: sticky Select All / Select None buttons at the top of the dropdown
