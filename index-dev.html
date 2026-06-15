@@ -297,6 +297,12 @@ function MfrFilter({
     value: query,
     placeholder: "Search\u2026",
     onChange: e => setQuery(e.target.value),
+    onKeyDown: e => {
+      if (e.key === "Enter" && shown.length > 0) {
+        e.preventDefault();
+        toggle(shown[0]);
+      }
+    },
     style: {
       background: "#141414",
       border: "0.0625rem solid #333",
@@ -1279,7 +1285,7 @@ function FleetOptimizer() {
       color: "#555",
       marginTop: rem(2)
     }
-  }, "v0.6.4-rc.5")), /*#__PURE__*/React.createElement("button", {
+  }, "v0.6.4-rc.6")), /*#__PURE__*/React.createElement("button", {
     onClick: resetAll,
     style: {
       background: "none",
