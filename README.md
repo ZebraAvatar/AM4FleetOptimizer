@@ -11,10 +11,11 @@ A fleet planning tool for [Airline Manager 4](https://www.airlinemanager.com/). 
 ## Features
 
 - **Fleet selection** — enumerates single- and two-type fleets, with throttle search to find cases where flying fewer flights per aircraft and using a cheap mopper yields higher profit than running one plane at full utilization
+- **Airframe consolidation** — collapses each aircraft type to the fewest airframes flying their maximum daily rotations, with one uniform seat configuration per type, so a recommendation never spreads demand across more (or pricier) planes than needed
 - **Accurate cost model** — fuel ($/1000 lb), CO₂ ($/quota, where 1 quota = 1 metric ton), and A-check amortization per flight; CO₂ charged against actual passengers carried, not aircraft capacity
 - **Sustainable flight count** — flights that can start within operating hours, capped at the rate sustainable across consecutive days (no schedule drift)
 - **Equalize mode** — forces all aircraft to fly the same number of flights per day, for simpler scheduling; tries all valid equal flight counts and picks the most profitable
-- **Single Type mode** — restricts the fleet to one aircraft type with a uniform seat configuration and flight count across all copies, modelling real-world fleet assignment
+- **Single Type** — a one-tap shortcut that limits the fleet to a single aircraft type (equivalent to Max Aircraft Types = 1)
 - **2× Range (stopovers)** — doubles each aircraft's effective range, opening short-haul planes to long routes via intermediate stops
 - **Expandable runner-up fleets** — up to 3 Pareto-optimal alternatives (higher profit or lower fleet cost than any dominated option), each with full config and flight detail
 - **Diagnostic empty states** — specific messages when constraints eliminate all options (range, runway, budget, manufacturer filter)
@@ -26,9 +27,9 @@ A fleet planning tool for [Airline Manager 4](https://www.airlinemanager.com/). 
 | Max Runway (ft) | Excludes aircraft requiring a longer runway |
 | Max Plane $ | Per-aircraft purchase price ceiling |
 | Max Fleet $ | Total fleet purchase price ceiling |
-| Max Aircraft | Maximum total number of aircraft |
-| Max Airframes | Maximum number of distinct aircraft types (1 = single-type only) |
-| Manufacturers | Exclude specific manufacturers from consideration |
+| Max # Aircraft | Maximum total number of aircraft |
+| Max Aircraft Types | Maximum number of distinct aircraft types (1 = single-type only) |
+| Manufacturers | Exclude specific manufacturers; searchable (prefix match; Enter toggles the top result) |
 | Rep % | Scales demand down by your current reputation percentage |
 
 ---
@@ -96,6 +97,7 @@ Download `index.html` and open it in any browser. No server or build step requir
 
 | Version | Changes |
 |---------|---------|
+| v0.6.4 | Airframe consolidation (fewest planes at max rotations) + uniform config per type; manufacturer search (prefix match, autofocus, Enter toggles top result); mobile input flow (Distance tabs to Economy); Single Type → Max Aircraft Types shortcut |
 | v0.6.3 | Single Type mode (uniform config); manufacturer Select All/None; demand paste fix; px-to-rem conversion |
 | v0.6.2 | Web worker (non-blocking compute); planes.js split (planes.js + StandaloneHelper.html) |
 | v0.61 | Horizon mode (rank fleets by net profit at T days); compact two-row layout with Advanced accordion |
