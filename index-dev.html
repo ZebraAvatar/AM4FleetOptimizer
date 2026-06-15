@@ -484,7 +484,7 @@ function CompPanel({
     }, fmt(Math.abs(cDiff)), " \xF7 ", fmt(Math.abs(pDiff)), "/day = ", cross.toFixed(1), " days"));
   })()));
 }
-function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers, horizon, singleType) {
+function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers, horizon) {
   const d = n(dist),
     r = n(rep) || 100;
   const yD = Math.floor(n(yDem) * r / 100);
@@ -727,7 +727,7 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
   }
 
   // Two-type fleets (skip if max airframes = 1, or single-type mode)
-  if (!singleType && (mAf <= 0 || mAf >= 2)) {
+  if (mAf <= 0 || mAf >= 2) {
     for (let i = 0; i < top.length; i++) {
       for (let j = 0; j < top.length; j++) {
         if (j === i) continue;
@@ -775,40 +775,82 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
   const winnerKey = rawFleet.map(e => e.plane.n + "x" + e.qty).sort().join("|");
 
   // ── Step 2: Allocate seats per aircraft, optimizing flight count ──
-  // Helper: optimize one aircraft for a given demand pool
-  const allocOne = (plane, maxRot, fixedCPF, co2PP, aF, aJ, aY) => {
-    let bestProfit = 0,
-      best = null;
-    for (let f = 1; f <= maxRot; f++) {
-      const fs = Math.min(Math.floor(plane.p / 3), aF > 0 ? Math.ceil(aF / f) : 0);
-      const capF = plane.p - 3 * fs;
-      const js = Math.min(Math.floor(capF / 2), aJ > 0 ? Math.ceil(aJ / f) : 0);
-      const capJ = capF - 2 * js;
-      const ys = capJ; // fill all remaining capacity with Y seats
-      if (fs + js + ys === 0) continue;
-      const sF = Math.min(fs * f, aF),
-        sJ = Math.min(js * f, aJ),
-        sY = Math.min(ys * f, aY);
-      const rev = sF * fP + sJ * jP + sY * yP;
-      const cost = fixedCPF * f + co2PP * (sF + sJ + sY);
-      const profit = rev - cost;
-      if (profit > bestProfit) {
-        bestProfit = profit;
-        best = {
-          fs,
-          js,
-          ys,
-          f,
-          sF,
-          sJ,
-          sY,
-          rev,
-          cost,
-          profit
-        };
-      } else if (best && profit < best.profit) break;
+  // Helpers for Step-2 allocation. tmr = true max rotations from plane speed (never the
+  // throttled rot stored on two-type entries). cfgForF sizes one uniform config for a
+  // type flying F total flights against a demand pool. bestF finds the profit-max F
+  // (profit is concave in F). pushType emits a type's planes (sharing one config) at the
+  // given per-plane flight counts, attributing demand sequentially and merging identical rows.
+  const tmr = plane => Math.min(Math.ceil(oH * plane.s / d), Math.max(1, Math.floor(24 * plane.s / d)));
+  const cfgForF = (plane, fixedCPF, co2PP, F, aF, aJ, aY) => {
+    const fs = Math.min(Math.floor(plane.p / 3), aF > 0 ? Math.ceil(aF / F) : 0);
+    const capF = plane.p - 3 * fs;
+    const js = Math.min(Math.floor(capF / 2), aJ > 0 ? Math.ceil(aJ / F) : 0);
+    const ys = capF - 2 * js;
+    const sF = Math.min(fs * F, aF),
+      sJ = Math.min(js * F, aJ),
+      sY = Math.min(ys * F, aY);
+    const rev = sF * fP + sJ * jP + sY * yP;
+    const cost = fixedCPF * F + co2PP * (sF + sJ + sY);
+    return {
+      fs,
+      js,
+      ys,
+      sF,
+      sJ,
+      sY,
+      rev,
+      cost,
+      profit: rev - cost,
+      occupied: fs + js + ys > 0
+    };
+  };
+  const bestF = (plane, fixedCPF, co2PP, Fmax, aF, aJ, aY) => {
+    let best = null;
+    for (let F = 1; F <= Fmax; F++) {
+      const c = cfgForF(plane, fixedCPF, co2PP, F, aF, aJ, aY);
+      if (!c.occupied) continue;
+      if (!best || c.profit > best.profit) best = {
+        F,
+        ...c
+      };else if (best && c.profit < best.profit) break;
     }
     return best;
+  };
+  const pushType = (target, plane, fixedCPF, co2PP, c, counts) => {
+    let tF = c.sF,
+      tJ = c.sJ,
+      tY = c.sY;
+    for (const cnt of counts) {
+      if (cnt <= 0) continue;
+      const pF = Math.min(c.fs * cnt, tF),
+        pJ = Math.min(c.js * cnt, tJ),
+        pY = Math.min(c.ys * cnt, tY);
+      tF -= pF;
+      tJ -= pJ;
+      tY -= pY;
+      const rev = pF * fP + pJ * jP + pY * yP;
+      const cost = fixedCPF * cnt + co2PP * (pF + pJ + pY);
+      const prev = target[target.length - 1];
+      if (prev && prev.plane.n === plane.n && prev.fSeats === c.fs && prev.jSeats === c.js && prev.ySeats === c.ys && prev.rot === cnt) {
+        prev.qty++;
+        prev.profitPerDay += rev - cost;
+        prev.revenuePerDay += rev;
+        prev.costPerDay += cost;
+      } else {
+        target.push({
+          plane,
+          qty: 1,
+          fSeats: c.fs,
+          jSeats: c.js,
+          ySeats: c.ys,
+          rot: cnt,
+          maxRot: tmr(plane),
+          profitPerDay: rev - cost,
+          revenuePerDay: rev,
+          costPerDay: cost
+        });
+      }
+    }
   };
 
   // Allocate a fleet (winner or runner-up) into concrete configs & flight counts
@@ -818,78 +860,22 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
       remY = yD;
     const fleet = [];
     const totalAC = entries.reduce((s, e) => s + e.qty, 0);
-    if (singleType) {
-      // Uniform fleet: all copies share identical config & flight count
-      const entry = entries[0];
-      const {
-        plane,
-        fixedCPF,
-        co2PP,
-        qty
-      } = entry;
-      const maxRot = Math.min(Math.ceil(oH * plane.s / d), Math.max(1, Math.floor(24 * plane.s / d)));
-      let bestProfit = 0,
-        best = null;
-      for (let f = 1; f <= maxRot; f++) {
-        const fs = Math.min(Math.floor(plane.p / 3), fD > 0 ? Math.ceil(fD / (qty * f)) : 0);
-        const capF = plane.p - 3 * fs;
-        const js = Math.min(Math.floor(capF / 2), jD > 0 ? Math.ceil(jD / (qty * f)) : 0);
-        const ys = capF - 2 * js;
-        if (fs + js + ys === 0) continue;
-        const sF = Math.min(qty * fs * f, fD),
-          sJ = Math.min(qty * js * f, jD),
-          sY = Math.min(qty * ys * f, yD);
-        const rev = sF * fP + sJ * jP + sY * yP;
-        const cost = qty * fixedCPF * f + co2PP * (sF + sJ + sY);
-        const profit = rev - cost;
-        if (profit > bestProfit) {
-          bestProfit = profit;
-          best = {
-            fs,
-            js,
-            ys,
-            f,
-            sF,
-            sJ,
-            sY,
-            rev,
-            cost,
-            profit,
-            maxRot
-          };
-        } else if (best && profit < best.profit) break;
-      }
-      if (best) {
-        fleet.push({
-          plane,
-          qty,
-          fSeats: best.fs,
-          jSeats: best.js,
-          ySeats: best.ys,
-          rot: best.f,
-          maxRot: best.maxRot,
-          profitPerDay: best.profit,
-          revenuePerDay: best.rev,
-          costPerDay: best.cost
-        });
-        remF -= best.sF;
-        remJ -= best.sJ;
-        remY -= best.sY;
-      }
-    } else if (eq && totalAC > 1) {
-      // Equalize: all aircraft fly exactly the same number of flights.
-      // Use original maxRot (from plane speed), not the throttled rot
-      const minMaxRot = entries.reduce((m2, e) => Math.min(m2, Math.min(Math.ceil(oH * e.plane.s / d), Math.max(1, Math.floor(24 * e.plane.s / d)))), Infinity);
+    if (eq && totalAC > 1) {
+      // Equalize: every plane flies the SAME number of daily flights, so the in-game
+      // "Depart All" stays clean (no plane maxing out while another still has flights).
+      // Capped at the smallest maxRot across the fleet's types; the shared count is
+      // chosen by total profit. Each type still uses one uniform config and only as many
+      // airframes as its demand share needs. Accepts a small efficiency cost (planes may
+      // fly below their own max) as the price of uniform scheduling.
+      const minMaxRot = entries.reduce((m, e) => Math.min(m, tmr(e.plane)), Infinity);
       let bestEqProfit = -Infinity,
-        bestEqFleet = [],
-        bestRemF = fD,
-        bestRemJ = jD,
-        bestRemY = yD;
+        bestEqFleet = null,
+        bestRem = null;
       for (let eqF = 1; eqF <= minMaxRot; eqF++) {
-        let rF2 = fD,
-          rJ2 = jD,
-          rY2 = yD,
-          eqFleet = [],
+        const cand = [];
+        let rF = fD,
+          rJ = jD,
+          rY = yD,
           eqProfit = 0;
         for (const entry of entries) {
           const {
@@ -898,89 +884,62 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
             co2PP,
             qty
           } = entry;
-          for (let q = 0; q < qty; q++) {
-            const fs = Math.min(Math.floor(plane.p / 3), rF2 > 0 ? Math.ceil(rF2 / eqF) : 0);
-            const capF = plane.p - 3 * fs;
-            const js = Math.min(Math.floor(capF / 2), rJ2 > 0 ? Math.ceil(rJ2 / eqF) : 0);
-            const capJ = capF - 2 * js;
-            const ys = capJ; // fill all remaining capacity with Y seats
-            if (fs + js + ys === 0) continue;
-            const sF = Math.min(fs * eqF, rF2),
-              sJ = Math.min(js * eqF, rJ2),
-              sY = Math.min(ys * eqF, rY2);
-            const rev = sF * fP + sJ * jP + sY * yP;
-            const cost = fixedCPF * eqF + co2PP * (sF + sJ + sY);
-            const profit = rev - cost;
-            if (profit > 0) {
-              eqFleet.push({
-                plane,
-                qty: 1,
-                fSeats: fs,
-                jSeats: js,
-                ySeats: ys,
-                rot: eqF,
-                maxRot: Math.min(Math.ceil(oH * plane.s / d), Math.max(1, Math.floor(24 * plane.s / d))),
-                profitPerDay: profit,
-                revenuePerDay: rev,
-                costPerDay: cost
-              });
-              eqProfit += profit;
-              rF2 -= sF;
-              rJ2 -= sJ;
-              rY2 -= sY;
-            }
+          let pick = null;
+          for (let nq = 1; nq <= qty; nq++) {
+            const c = cfgForF(plane, fixedCPF, co2PP, nq * eqF, rF, rJ, rY);
+            if (!c.occupied) continue;
+            if (!pick || c.profit > pick.profit) pick = {
+              nq,
+              ...c
+            };else if (pick && c.profit < pick.profit) break;
+          }
+          if (pick && pick.profit > 0) {
+            pushType(cand, plane, fixedCPF, co2PP, pick, Array(pick.nq).fill(eqF));
+            eqProfit += pick.profit;
+            rF -= pick.sF;
+            rJ -= pick.sJ;
+            rY -= pick.sY;
           }
         }
         if (eqProfit > bestEqProfit) {
           bestEqProfit = eqProfit;
-          bestEqFleet = eqFleet;
-          bestRemF = rF2;
-          bestRemJ = rJ2;
-          bestRemY = rY2;
+          bestEqFleet = cand;
+          bestRem = [rF, rJ, rY];
         }
       }
-      fleet.push(...bestEqFleet);
-      remF = bestRemF;
-      remJ = bestRemJ;
-      remY = bestRemY;
+      if (bestEqFleet) {
+        fleet.push(...bestEqFleet);
+        remF = bestRem[0];
+        remJ = bestRem[1];
+        remY = bestRem[2];
+      }
     } else {
-      // Normal: sequential greedy allocation
+      // Normal: per-type uniform config, then consolidate to the fewest airframes each
+      // flying their max rotations - no idle planes, no zero-revenue flights. Flights
+      // beyond the first plane's maxRot spill onto additional planes (front-loaded).
       for (const entry of entries) {
+        if (remF <= 0 && remJ <= 0 && remY <= 0) break;
         const {
           plane,
-          rot: maxRot,
           fixedCPF,
           co2PP,
           qty
         } = entry;
-        for (let q = 0; q < qty; q++) {
-          if (remF <= 0 && remJ <= 0 && remY <= 0) break;
-          const best = allocOne(plane, maxRot, fixedCPF, co2PP, remF, remJ, remY);
-          if (!best) break;
-          const prev = fleet[fleet.length - 1];
-          if (prev && prev.plane.n === plane.n && prev.fSeats === best.fs && prev.jSeats === best.js && prev.ySeats === best.ys && prev.rot === best.f) {
-            prev.qty++;
-            prev.profitPerDay += best.profit;
-            prev.revenuePerDay += best.rev;
-            prev.costPerDay += best.cost;
-          } else {
-            fleet.push({
-              plane,
-              qty: 1,
-              fSeats: best.fs,
-              jSeats: best.js,
-              ySeats: best.ys,
-              rot: best.f,
-              maxRot,
-              profitPerDay: best.profit,
-              revenuePerDay: best.rev,
-              costPerDay: best.cost
-            });
-          }
-          remF -= best.sF;
-          remJ -= best.sJ;
-          remY -= best.sY;
+        const mr = tmr(plane);
+        const b = bestF(plane, fixedCPF, co2PP, qty * mr, remF, remJ, remY);
+        if (!b) continue;
+        const nq = Math.max(1, Math.ceil(b.F / mr));
+        const counts = [];
+        let left = b.F;
+        for (let i = 0; i < nq; i++) {
+          const c = Math.min(mr, left);
+          counts.push(c);
+          left -= c;
         }
+        pushType(fleet, plane, fixedCPF, co2PP, b, counts);
+        remF -= b.sF;
+        remJ -= b.sJ;
+        remY -= b.sY;
       }
     }
     return {
@@ -1121,7 +1080,6 @@ function FleetOptimizer() {
   const [maxAircraft, setMaxAircraft] = useState(null);
   const [maxAirframes, setMaxAirframes] = useState(null);
   const [equalize, setEqualize] = useState(false);
-  const [singleType, setSingleType] = useState(false);
   const [stopovers, setStopover] = useState(false);
   const [horizon, setHorizon] = useState(null);
   const [advOpen, setAdvOpen] = useState(false);
@@ -1137,6 +1095,7 @@ function FleetOptimizer() {
   const [lockedA, setLockedA] = useState(null); // { id, profit, fleetCost, fleet, label } — snapshot; persists across input changes
   const [activeComp, setActiveComp] = useState(null); // { id, label } — which B is being compared; resets on input change
   const timerRef = useRef(null);
+  const yRef = useRef(null);
   const jRef = useRef(null);
   const fRef = useRef(null);
   const resetAll = () => {
@@ -1157,7 +1116,6 @@ function FleetOptimizer() {
     setMaxAirframes(null);
     setEqualize(false);
     setStopover(false);
-    setSingleType(false);
     setHorizon(null);
   };
   useEffect(() => {
@@ -1182,7 +1140,7 @@ function FleetOptimizer() {
     setPending(true);
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      const params = [dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, [...excludedMfrs], maxAircraft, maxAirframes, equalize, stopovers, horizon, singleType];
+      const params = [dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, [...excludedMfrs], maxAircraft, maxAirframes, equalize, stopovers, horizon];
       if (workerRef.current) {
         genRef.current++;
         setComputing(true);
@@ -1199,7 +1157,7 @@ function FleetOptimizer() {
       }
     }, 250);
     return () => clearTimeout(timerRef.current);
-  }, [dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers, horizon, singleType]);
+  }, [dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers, horizon]);
   const s = result.summary;
   const r = n(rep) || 100;
   const yD = Math.floor(n(yDem) * r / 100),
@@ -1321,7 +1279,7 @@ function FleetOptimizer() {
       color: "#555",
       marginTop: rem(2)
     }
-  }, "v0.6.4-rc.4")), /*#__PURE__*/React.createElement("button", {
+  }, "v0.6.4-rc.5")), /*#__PURE__*/React.createElement("button", {
     onClick: resetAll,
     style: {
       background: "none",
@@ -1414,7 +1372,7 @@ function FleetOptimizer() {
   }, /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: rem(11),
-      color: singleType ? "#5a7" : "#8a8a8a",
+      color: maxAirframes === 1 ? "#5a7" : "#8a8a8a",
       fontFamily: "'DM Mono', monospace",
       textTransform: "uppercase",
       letterSpacing: "0.05em",
@@ -1427,8 +1385,8 @@ function FleetOptimizer() {
       alignItems: "center"
     }
   }, /*#__PURE__*/React.createElement(Check, {
-    checked: singleType,
-    onChange: e => setSingleType(e.target.checked)
+    checked: maxAirframes === 1,
+    onChange: e => setMaxAirframes(e.target.checked ? 1 : null)
   }))), /*#__PURE__*/React.createElement("div", {
     style: {
       flex: 1,
@@ -1464,7 +1422,8 @@ function FleetOptimizer() {
     label: "Distance (km)",
     value: dist,
     onChange: setDist,
-    placeholder: "km"
+    placeholder: "km",
+    advanceRef: yRef
   })), /*#__PURE__*/React.createElement("div", {
     style: {
       flex: `1 0 ${rem(56)}`,
@@ -1476,6 +1435,7 @@ function FleetOptimizer() {
     value: yDem,
     onChange: setYDem,
     placeholder: "0",
+    innerRef: yRef,
     advanceRef: jRef,
     onOverflow: vals => {
       setJDem(vals[0] != null ? vals[0] : null);
@@ -1596,12 +1556,12 @@ function FleetOptimizer() {
     onChange: setMaxFleetPrice,
     placeholder: "unlimited"
   }), /*#__PURE__*/React.createElement(NumInput, {
-    label: "Max Aircraft",
+    label: "Max # Aircraft",
     value: maxAircraft,
     onChange: setMaxAircraft,
     placeholder: "unlimited"
   }), /*#__PURE__*/React.createElement(NumInput, {
-    label: "Max Airframes",
+    label: "Max Aircraft Types",
     value: maxAirframes,
     onChange: setMaxAirframes,
     placeholder: "unlimited"
