@@ -641,6 +641,11 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
     mAf = n(maxAirframes);
   const eq = !!equalize,
     stp = stopovers ? 2 : 1;
+  // Easy mode flies aircraft at 1.5x their listed speed; Realism uses base speed. This
+  // raises daily flight count and shortens flight time (lowering the time-based A-check
+  // cost per flight). spd() returns the effective speed used in all speed-driven math.
+  const sm = mode === "easy" ? 1.5 : 1;
+  const spd = pl => pl.s * sm;
   const exMfr = excludedMfrs || new Set();
   if (d <= 0 || yDem == null || jDem == null || fDem == null || yD + jD + fD <= 0) return {
     fleet: [],
@@ -670,7 +675,7 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
     if (!plane) continue;
     if (plane.r * stp < d) return fail(`Anchor ${plane.n} can't fly ${fmtN(d)} km${stp === 1 ? " — enable 2x Range" : ""}`);
     if (mRw > 0 && plane.rw > mRw) return fail(`Anchor ${plane.n} needs more than a ${fmtN(mRw)} ft runway`);
-    const fixedCPF = (plane.f * plane.s * fP_ + plane.a / plane.h) * d / plane.s;
+    const fixedCPF = (plane.f * spd(plane) * fP_ + plane.a / plane.h) * d / spd(plane);
     const co2PP = plane.c * d * cP_;
     let fixedCfg = null;
     if (!anchorAutoConfig) {
@@ -709,10 +714,10 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
     return fail("The manufacturer filter excludes every qualifying aircraft");
   }
   const planeData = mfrOK.map(p => {
-    const rot = Math.min(Math.ceil(oH * p.s / d), Math.max(1, Math.floor(24 * p.s / d))); // sustainable daily flights
+    const rot = Math.min(Math.ceil(oH * spd(p) / d), Math.max(1, Math.floor(24 * spd(p) / d))); // sustainable daily flights
     if (rot <= 0) return null;
     // Fixed costs (fuel + A-check): per flight, independent of passengers
-    const fixedCPF = (p.f * p.s * fP_ + p.a / p.h) * d / p.s;
+    const fixedCPF = (p.f * spd(p) * fP_ + p.a / p.h) * d / spd(p);
     // CO2 cost: per actual passenger per route (not per flight)
     const co2PP = p.c * d * cP_;
     // For ranking: use capacity-based cost as conservative upper bound
@@ -841,7 +846,7 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
   // never flies at an operating loss in normal mode — it parks). pushType emits a type's
   // planes sharing one config at given per-plane flight counts, merging identical rows;
   // with keepIdle it also emits 0-flight "redundant" rows for owned anchors not needed here.
-  const tmr = plane => Math.min(Math.ceil(oH * plane.s / d), Math.max(1, Math.floor(24 * plane.s / d)));
+  const tmr = plane => Math.min(Math.ceil(oH * spd(plane) / d), Math.max(1, Math.floor(24 * spd(plane) / d)));
   const cfgForF = (plane, fixedCPF, co2PP, F, aF, aJ, aY) => {
     const fs = Math.min(Math.floor(plane.p / 3), aF > 0 ? Math.ceil(aF / F) : 0);
     const capF = plane.p - 3 * fs;
@@ -1735,7 +1740,7 @@ function FleetOptimizer() {
       color: "#555",
       marginTop: rem(2)
     }
-  }, "v0.6.5-rc.2")), /*#__PURE__*/React.createElement("button", {
+  }, "v0.6.5-rc.3")), /*#__PURE__*/React.createElement("button", {
     onClick: resetAll,
     style: {
       background: "none",
