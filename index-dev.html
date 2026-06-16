@@ -1349,6 +1349,19 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
   const splitPurchase = fl => fl.reduce((s, f) => s + (f.anchor ? 0 : f.qty * f.plane["$"]), 0);
   const splitCompProfit = fl => fl.reduce((s, f) => s + (f.anchor ? 0 : f.profitPerDay), 0);
   const anchorSpend = fl => fl.reduce((s, f) => s + (f.anchor ? f.qty * f.plane["$"] : 0), 0);
+  // Label a fleet by its real bought combo (ground truth post-allocation), not the
+  // pre-allocation candidate — a candidate's second type can end up unneeded once
+  // allocation runs, and showing it anyway misrepresents what's actually in the fleet.
+  // Anchors are excluded (they're owned, not part of "what to buy", and are already
+  // shown per-row as "(owned)" in the expanded detail).
+  const fleetLabel = fl => {
+    const m = new Map();
+    for (const f of fl) {
+      if (f.anchor) continue;
+      m.set(f.plane.n, (m.get(f.plane.n) || 0) + f.qty);
+    }
+    return Array.from(m, ([nm, qty]) => `${qty}× ${nm}`).join(" + ") || "(owned only)";
+  };
 
   // ── Horizon mode: rank the whole Pareto frontier by net profit at T days ──
   // net(T) = profit/day × T − fleet purchase cost. The net-maximizer for any T
@@ -1363,7 +1376,7 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
       const purchase = splitPurchase(a.fleet);
       const payProfit = splitCompProfit(a.fleet);
       return {
-        planes: t.planes,
+        planes: fleetLabel(a.fleet),
         purchase,
         profit,
         payProfit,
@@ -1378,7 +1391,7 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
     if (hasAnchors) {
       const a = allocate([]);
       cands.push({
-        planes: [],
+        planes: fleetLabel(a.fleet),
         purchase: 0,
         profit: a.fleet.reduce((s2, f2) => s2 + f2.profitPerDay, 0),
         payProfit: 0,
@@ -1435,7 +1448,7 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
   const alternatives = topFleets.filter(t => t.key !== winnerKey).slice(0, 3).map(t => {
     const a = allocate(t.entries);
     return {
-      planes: t.planes,
+      planes: fleetLabel(a.fleet),
       purchase: splitPurchase(a.fleet),
       profit: a.fleet.reduce((s2, f2) => s2 + f2.profitPerDay, 0),
       payProfit: splitCompProfit(a.fleet),
@@ -1737,7 +1750,7 @@ function FleetOptimizer() {
       color: "#555",
       marginTop: rem(2)
     }
-  }, "v0.6.5-rc.4")), /*#__PURE__*/React.createElement("button", {
+  }, "v0.6.5-rc.5")), /*#__PURE__*/React.createElement("button", {
     onClick: resetAll,
     style: {
       background: "none",
@@ -2693,7 +2706,7 @@ function FleetOptimizer() {
     style: {
       color: "#555"
     }
-  }, altOpen === i ? "▾ " : "▸ "), alt.planes.map(p => `${p.qty}× ${p.n}`).join(" + "), /*#__PURE__*/React.createElement("span", {
+  }, altOpen === i ? "▾ " : "▸ "), alt.planes, /*#__PURE__*/React.createElement("span", {
     style: {
       color: "#7c8"
     }
