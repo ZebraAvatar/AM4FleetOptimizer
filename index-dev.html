@@ -680,9 +680,12 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
     let fixedCfg = null;
     if (!anchorAutoConfig) {
       const cap = plane.p;
-      const fs = Math.min(Math.max(0, Math.floor(n(a.f))), Math.floor(cap / 3));
-      const js = Math.min(Math.max(0, Math.floor(n(a.j))), Math.floor((cap - 3 * fs) / 2));
-      const ys = Math.min(Math.max(0, Math.floor(n(a.y))), cap - 3 * fs - 2 * js);
+      const fs = a.f == null ? 0 : Math.min(Math.max(0, Math.floor(a.f)), Math.floor(cap / 3));
+      const js = a.j == null ? 0 : Math.min(Math.max(0, Math.floor(a.j)), Math.floor((cap - 3 * fs) / 2));
+      const yMax = cap - 3 * fs - 2 * js;
+      // Blank Economy => fill the remaining capacity with economy (the all-Y default).
+      // An explicit 0 means zero economy seats; only a left-blank field triggers the fill.
+      const ys = a.y == null ? yMax : Math.min(Math.max(0, Math.floor(a.y)), yMax);
       fixedCfg = {
         fs,
         js,
@@ -693,7 +696,7 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
       plane,
       fixedCPF,
       co2PP,
-      qty: Math.floor(n(a.qty)),
+      qty: Math.max(1, Math.floor(n(a.qty))),
       fixedCfg,
       anchor: true
     });
@@ -1549,7 +1552,7 @@ function FleetOptimizer() {
   const addAnchor = () => setAnchors(as => [...as, {
     id: Date.now() + Math.random(),
     n: null,
-    qty: 1,
+    qty: null,
     f: null,
     j: null,
     y: null
@@ -1559,16 +1562,10 @@ function FleetOptimizer() {
     ...a,
     ...patch
   } : a));
-  const pickAnchorPlane = (id, name) => {
-    const pl = P.find(p => p.n === name);
-    updateAnchor(id, {
-      n: name,
-      y: pl ? pl.p : null,
-      j: 0,
-      f: 0
-    });
-  };
-  const validAnchors = anchors.filter(a => a.n && n(a.qty) > 0);
+  const pickAnchorPlane = (id, name) => updateAnchor(id, {
+    n: name
+  }); // leave config blank; empty Y => all-economy
+  const validAnchors = anchors.filter(a => a.n && (a.qty == null || n(a.qty) > 0));
   useEffect(() => {
     const w = createOptimizerWorker();
     workerRef.current = w;
@@ -1593,10 +1590,10 @@ function FleetOptimizer() {
     timerRef.current = setTimeout(() => {
       const anchorsData = validAnchors.map(a => ({
         n: a.n,
-        qty: n(a.qty),
-        f: n(a.f),
-        j: n(a.j),
-        y: n(a.y)
+        qty: n(a.qty) > 0 ? n(a.qty) : 1,
+        f: a.f == null ? null : n(a.f),
+        j: a.j == null ? null : n(a.j),
+        y: a.y == null ? null : n(a.y)
       }));
       const params = [dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, [...excludedMfrs], maxAircraft, maxAirframes, equalize, stopovers, horizon, anchorsData, anchorAutoConfig];
       if (workerRef.current) {
@@ -1740,7 +1737,7 @@ function FleetOptimizer() {
       color: "#555",
       marginTop: rem(2)
     }
-  }, "v0.6.5-rc.3")), /*#__PURE__*/React.createElement("button", {
+  }, "v0.6.5-rc.4")), /*#__PURE__*/React.createElement("button", {
     onClick: resetAll,
     style: {
       background: "none",
@@ -2102,6 +2099,7 @@ function FleetOptimizer() {
         current: null
       }
     });
+    const aCap = a.n ? (P.find(p => p.n === a.n) || {}).p : null;
     return /*#__PURE__*/React.createElement("div", {
       key: a.id,
       style: {
@@ -2150,7 +2148,7 @@ function FleetOptimizer() {
         y: v
       }),
       small: true,
-      placeholder: "0",
+      placeholder: aCap ? String(aCap) : "all",
       innerRef: refs.y,
       advanceRef: refs.j
     })), /*#__PURE__*/React.createElement("div", {
