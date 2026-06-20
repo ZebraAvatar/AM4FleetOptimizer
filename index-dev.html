@@ -1177,7 +1177,6 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
     if (!hasAnchors) return fail("No profitable fleet — operating costs exceed revenue at these settings");
     rawFleet = []; // anchors-only: a valid fleet even with no profitable complement to add
   }
-  const winnerKey = rawFleet.map(e => e.plane.n + "x" + e.qty).sort().join("|");
 
   // ── Step 2: Allocate seats per aircraft, optimizing flight count ──
   // (Allocation helpers tmr/cfgForF/bestF/bestFFixed/pushType and the anchor pass are
@@ -1337,12 +1336,6 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
       remY
     };
   };
-  const {
-    fleet,
-    remF,
-    remJ,
-    remY
-  } = allocate(rawFleet);
 
   // Anchors are sunk: purchase cost and payback count only the complement (the new buy).
   // Profit shown is the whole fleet (anchors contribute operating profit, possibly a loss).
@@ -1457,51 +1450,81 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
     };
   }
 
-  // Re-allocate runner-ups so they can show real configs & flight counts. Purchase and
-  // payback are complement-only (anchors are sunk); profit shown is the whole fleet.
-  // Dedup on the actual allocated fleet so the winner can't reappear and no fleet repeats.
-  const winnerSig = fleetSig(fleet);
-  const seenAlt = new Set([winnerSig]);
-  const alternatives = [];
-  for (const t of topFleets) {
-    if (t.key === winnerKey) continue;
+  // ── No-horizon mode: rank the frontier by actual daily profit ──────────────
+  // Pick the winner by its *allocated* daily profit, not the search's profit
+  // estimate. The estimate can rank a fleet first that a real allocation then
+  // beats, which is how a runner-up could out-earn the winner (or strictly
+  // dominate it). Allocating every frontier fleet and taking the argmax — the
+  // same approach the horizon branch uses for net — makes that impossible.
+  const ncands = topFleets.map(t => {
     const a = allocate(t.entries);
-    const sg = fleetSig(a.fleet);
-    if (seenAlt.has(sg)) continue;
     const profit = a.fleet.reduce((s2, f2) => s2 + f2.profitPerDay, 0);
-    if (profit <= 0) continue;
-    seenAlt.add(sg);
-    alternatives.push({
+    return {
       planes: fleetLabel(a.fleet),
       purchase: splitPurchase(a.fleet),
       profit,
       payProfit: splitCompProfit(a.fleet),
-      fleet: a.fleet
+      fleet: a.fleet,
+      remF: a.remF,
+      remJ: a.remJ,
+      remY: a.remY
+    };
+  });
+  // Anchors-only (buy nothing) is always an option when anchors exist.
+  if (hasAnchors) {
+    const a = allocate([]);
+    ncands.push({
+      planes: fleetLabel(a.fleet),
+      purchase: 0,
+      profit: a.fleet.reduce((s2, f2) => s2 + f2.profitPerDay, 0),
+      payProfit: 0,
+      fleet: a.fleet,
+      remF: a.remF,
+      remJ: a.remJ,
+      remY: a.remY
     });
-    if (alternatives.length >= 3) break;
   }
-  const totalProfit = fleet.reduce((s, f) => s + f.profitPerDay, 0);
-  const totalRevenue = fleet.reduce((s, f) => s + f.revenuePerDay, 0);
-  const totalCost = fleet.reduce((s, f) => s + f.costPerDay, 0);
-  const totalAircraft = fleet.reduce((s, f) => s + f.qty, 0);
-  const totalPurchase = splitPurchase(fleet);
+  // Keep the buy-nothing baseline plus any complement that operates at a profit;
+  // among those the highest total daily profit wins (anchor profit varies with how
+  // much demand the complement leaves it, so rank on the whole-fleet total).
+  const nkeep = ncands.filter(c => c.purchase === 0 || c.payProfit > 0);
+  if (nkeep.length === 0) return fail("No profitable fleet — operating costs exceed revenue at these settings");
+  nkeep.sort((x, y) => y.profit - x.profit);
+  // Dedup by allocated-fleet signature (a 2-type candidate whose 2nd type gets
+  // trimmed can allocate to the identical fleet as a 1-type candidate).
+  const nseen = new Set();
+  const nuniq = [];
+  for (const c of nkeep) {
+    const sg = fleetSig(c.fleet);
+    if (nseen.has(sg)) continue;
+    nseen.add(sg);
+    nuniq.push(c);
+  }
+  const nwin = nuniq[0];
+  const alternatives = nuniq.slice(1, 4).map(c => ({
+    planes: c.planes,
+    purchase: c.purchase,
+    profit: c.profit,
+    payProfit: c.payProfit,
+    fleet: c.fleet
+  }));
   return {
-    fleet,
+    fleet: nwin.fleet,
     summary: {
-      totalProfit,
-      totalRevenue,
-      totalCost,
-      totalAircraft,
-      totalPurchase,
-      complementProfit: splitCompProfit(fleet),
-      anchorPurchase: anchorSpend(fleet),
+      totalProfit: nwin.profit,
+      totalRevenue: nwin.fleet.reduce((s, f) => s + f.revenuePerDay, 0),
+      totalCost: nwin.fleet.reduce((s, f) => s + f.costPerDay, 0),
+      totalAircraft: nwin.fleet.reduce((s, f) => s + f.qty, 0),
+      totalPurchase: nwin.purchase,
+      complementProfit: nwin.payProfit,
+      anchorPurchase: anchorSpend(nwin.fleet),
       hasAnchors,
-      servedY: yD - Math.max(0, remY),
-      servedJ: jD - Math.max(0, remJ),
-      servedF: fD - Math.max(0, remF),
-      unservedY: Math.max(0, remY),
-      unservedJ: Math.max(0, remJ),
-      unservedF: Math.max(0, remF),
+      servedY: yD - Math.max(0, nwin.remY),
+      servedJ: jD - Math.max(0, nwin.remJ),
+      servedF: fD - Math.max(0, nwin.remF),
+      unservedY: Math.max(0, nwin.remY),
+      unservedJ: Math.max(0, nwin.remJ),
+      unservedF: Math.max(0, nwin.remF),
       yPrice: yP,
       jPrice: jP,
       fPrice: fP,
@@ -1775,7 +1798,7 @@ function FleetOptimizer() {
       color: "#555",
       marginTop: rem(2)
     }
-  }, "v0.6.5-rc.6")), /*#__PURE__*/React.createElement("button", {
+  }, "v0.6.5-rc.7")), /*#__PURE__*/React.createElement("button", {
     onClick: resetAll,
     style: {
       background: "none",
