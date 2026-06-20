@@ -1362,6 +1362,9 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
     }
     return Array.from(m, ([nm, qty]) => `${qty}× ${nm}`).join(" + ") || "(owned only)";
   };
+  // Signature of an allocated fleet (plane, qty, config, rotations). Two candidates with
+  // different search combos can allocate to the identical fleet — this lets us dedup them.
+  const fleetSig = fl => fl.map(f => `${f.plane.n}#${f.qty}#${f.ySeats},${f.jSeats},${f.fSeats}#${f.rot}#${f.anchor ? 1 : 0}#${f.redundant ? 1 : 0}`).sort().join("|");
 
   // ── Horizon mode: rank the whole Pareto frontier by net profit at T days ──
   // net(T) = profit/day × T − fleet purchase cost. The net-maximizer for any T
@@ -1406,8 +1409,19 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
     const keep = cands.filter(c => c.purchase === 0 || c.payProfit > 0 && c.net > 0);
     if (keep.length === 0) return fail(`No fleet pays back within ${fmtN(T)} days — every option is still in the hole`);
     keep.sort((x, y) => y.net - x.net);
-    const w = keep[0];
-    const hAlternatives = keep.slice(1, 4).map(c => ({
+    // Dedup by allocated-fleet signature: distinct search combos can allocate to the same
+    // actual fleet (e.g. a 2-type candidate whose 2nd type gets trimmed), which would
+    // otherwise show the winner again as a runner-up, or the same fleet twice.
+    const seenH = new Set();
+    const uniq = [];
+    for (const c of keep) {
+      const sg = fleetSig(c.fleet);
+      if (seenH.has(sg)) continue;
+      seenH.add(sg);
+      uniq.push(c);
+    }
+    const w = uniq[0];
+    const hAlternatives = uniq.slice(1, 4).map(c => ({
       planes: c.planes,
       purchase: c.purchase,
       profit: c.profit,
@@ -1445,16 +1459,27 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
 
   // Re-allocate runner-ups so they can show real configs & flight counts. Purchase and
   // payback are complement-only (anchors are sunk); profit shown is the whole fleet.
-  const alternatives = topFleets.filter(t => t.key !== winnerKey).slice(0, 3).map(t => {
+  // Dedup on the actual allocated fleet so the winner can't reappear and no fleet repeats.
+  const winnerSig = fleetSig(fleet);
+  const seenAlt = new Set([winnerSig]);
+  const alternatives = [];
+  for (const t of topFleets) {
+    if (t.key === winnerKey) continue;
     const a = allocate(t.entries);
-    return {
+    const sg = fleetSig(a.fleet);
+    if (seenAlt.has(sg)) continue;
+    const profit = a.fleet.reduce((s2, f2) => s2 + f2.profitPerDay, 0);
+    if (profit <= 0) continue;
+    seenAlt.add(sg);
+    alternatives.push({
       planes: fleetLabel(a.fleet),
       purchase: splitPurchase(a.fleet),
-      profit: a.fleet.reduce((s2, f2) => s2 + f2.profitPerDay, 0),
+      profit,
       payProfit: splitCompProfit(a.fleet),
       fleet: a.fleet
-    };
-  }).filter(t => t.profit > 0);
+    });
+    if (alternatives.length >= 3) break;
+  }
   const totalProfit = fleet.reduce((s, f) => s + f.profitPerDay, 0);
   const totalRevenue = fleet.reduce((s, f) => s + f.revenuePerDay, 0);
   const totalCost = fleet.reduce((s, f) => s + f.costPerDay, 0);
@@ -1750,7 +1775,7 @@ function FleetOptimizer() {
       color: "#555",
       marginTop: rem(2)
     }
-  }, "v0.6.5-rc.5")), /*#__PURE__*/React.createElement("button", {
+  }, "v0.6.5-rc.6")), /*#__PURE__*/React.createElement("button", {
     onClick: resetAll,
     style: {
       background: "none",
