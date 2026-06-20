@@ -763,12 +763,16 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
       sY
     } : null;
   };
-  // evalOne: find best flight count (profit is concave over f, so exit after peak)
+  // evalOne: find best flight count. profit(f) is concave (served revenue saturates as
+  // flights fill demand, cost is linear), so the first f that fails to improve — whether
+  // a lower profit OR a null (empty, unprofitable flights once demand is exhausted) — is
+  // past the peak. Stopping there is exact and avoids scanning up to rot (huge at short
+  // routes), which is what made anchored short-haul fleets hang.
   const evalOne = (pd, rF, rJ, rY) => {
     let best = null;
     for (let f = 1; f <= pd.rot; f++) {
       const r = evalOneAt(pd, rF, rJ, rY, f);
-      if (r && (!best || r.profit > best.profit)) best = r;else if (best && r && r.profit < best.profit) break; // past peak
+      if (r && (!best || r.profit > best.profit)) best = r;else break; // past the peak (or never profitable, if best is still null)
     }
     return best;
   };
@@ -802,11 +806,17 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
       };
     }
 
-    // Two types: try each flight count for first type, let rest mop up
+    // Two types: try each flight count for first type, let rest mop up. ff never needs to
+    // exceed what saturates the first type's demand — beyond that it flies empty (pure cost)
+    // while the second type has no residual left to absorb, so total profit only falls. The
+    // bound is in capacity units (an F seat costs 3 units, J costs 2, Y costs 1): once the
+    // first type's flights supply more units than demanded, it's saturated. This also keeps
+    // the loop short at short routes, where first.rot is very large.
     const first = entries[0];
     let bestTotal = -Infinity;
     let bestFF = 1;
-    for (let ff = 1; ff <= first.rot; ff++) {
+    const ffMax = Math.min(first.rot, Math.max(1, Math.ceil((3 * rfD + 2 * rjD + ryD) / first.plane.p)));
+    for (let ff = 1; ff <= ffMax; ff++) {
       let rF = rfD,
         rJ = rjD,
         rY = ryD,
@@ -1798,7 +1808,7 @@ function FleetOptimizer() {
       color: "#555",
       marginTop: rem(2)
     }
-  }, "v0.6.5-rc.7")), /*#__PURE__*/React.createElement("button", {
+  }, "v0.6.5-rc.8")), /*#__PURE__*/React.createElement("button", {
     onClick: resetAll,
     style: {
       background: "none",
