@@ -1808,7 +1808,7 @@ function FleetOptimizer() {
       color: "#555",
       marginTop: rem(2)
     }
-  }, "v0.6.5-rc.9")), /*#__PURE__*/React.createElement("button", {
+  }, "v0.6.5-rc.10")), /*#__PURE__*/React.createElement("button", {
     onClick: resetAll,
     style: {
       background: "none",
@@ -1943,21 +1943,21 @@ function FleetOptimizer() {
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      flex: `1.3 0 ${rem(110)}`,
+      flex: `1.3 0 ${rem(80)}`,
       minWidth: 0,
-      maxWidth: rem(280)
+      maxWidth: rem(240)
     }
   }, /*#__PURE__*/React.createElement(NumInput, {
-    label: "Distance (km)",
+    label: "Dist (km)",
     value: dist,
     onChange: setDist,
     placeholder: "km",
     advanceRef: yRef
   })), /*#__PURE__*/React.createElement("div", {
     style: {
-      flex: `1 0 ${rem(56)}`,
+      flex: `1 0 ${rem(48)}`,
       minWidth: 0,
-      maxWidth: rem(150)
+      maxWidth: rem(120)
     }
   }, /*#__PURE__*/React.createElement(NumInput, {
     label: "Y",
@@ -1972,9 +1972,9 @@ function FleetOptimizer() {
     }
   })), /*#__PURE__*/React.createElement("div", {
     style: {
-      flex: `1 0 ${rem(56)}`,
+      flex: `1 0 ${rem(48)}`,
       minWidth: 0,
-      maxWidth: rem(150)
+      maxWidth: rem(120)
     }
   }, /*#__PURE__*/React.createElement(NumInput, {
     label: "J",
@@ -1988,9 +1988,9 @@ function FleetOptimizer() {
     }
   })), /*#__PURE__*/React.createElement("div", {
     style: {
-      flex: `1 0 ${rem(56)}`,
+      flex: `0.7 0 ${rem(40)}`,
       minWidth: 0,
-      maxWidth: rem(150)
+      maxWidth: rem(80)
     }
   }, /*#__PURE__*/React.createElement(NumInput, {
     label: "F",
@@ -2001,14 +2001,15 @@ function FleetOptimizer() {
     onOverflow: () => {}
   })), /*#__PURE__*/React.createElement("div", {
     style: {
-      flex: `1 0 ${rem(86)}`,
+      flex: `0.7 0 ${rem(44)}`,
       minWidth: 0,
-      maxWidth: rem(170)
+      maxWidth: rem(80)
     }
   }, /*#__PURE__*/React.createElement(NumInput, {
-    label: "Op Hrs/Day",
+    label: "Hrs/d",
     value: opHrs,
-    onChange: setOpHrs
+    onChange: setOpHrs,
+    placeholder: "24"
   })))), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
@@ -2411,15 +2412,7 @@ function FleetOptimizer() {
       letterSpacing: "0.06em",
       marginBottom: rem(8)
     }
-  }, "Scenario B \u2014 pick one to compare"), s.horizon && /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: rem(10),
-      color: "#c86",
-      textTransform: "uppercase",
-      letterSpacing: "0.05em",
-      marginBottom: rem(8)
-    }
-  }, "Ranked by net profit @ ", fmtN(s.horizon), " days \u2014 fleets still in the hole at day ", fmtN(s.horizon), " are hidden"), /*#__PURE__*/React.createElement("div", {
+  }, "Scenario B \u2014 pick one to compare"), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "grid",
       gridTemplateColumns: "1fr 1fr",
@@ -2739,7 +2732,7 @@ function FleetOptimizer() {
       letterSpacing: "0.05em",
       marginBottom: rem(4)
     }
-  }, "Runner-up fleets"), s.alternatives.map((alt, i) => /*#__PURE__*/React.createElement("div", {
+  }, s.horizon ? `Runner-up fleets ranked by net profit @ ${fmtN(s.horizon)} days` : "Runner-up fleets"), s.alternatives.map((alt, i) => /*#__PURE__*/React.createElement("div", {
     key: i,
     style: {
       borderBottom: "0.0625rem solid #1a1a1a"
