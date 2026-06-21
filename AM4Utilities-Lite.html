@@ -137,15 +137,15 @@
           <div class="inner">
             <div class="field">
               <label>Base Price - Y Class (Economy)</label>
-              <input id="yBase" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="5" placeholder="0">
+              <input id="yBase" type="text" inputmode="numeric" enterkeyhint="next" pattern="[0-9]*" maxlength="5" placeholder="0">
             </div>
             <div class="field">
               <label>Base Price - J Class (Business)</label>
-              <input id="jBase" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="5" placeholder="0">
+              <input id="jBase" type="text" inputmode="numeric" enterkeyhint="next" pattern="[0-9]*" maxlength="5" placeholder="0">
             </div>
             <div class="field">
               <label>Base Price - F Class (First)</label>
-              <input id="fBase" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="5" placeholder="0">
+              <input id="fBase" type="text" inputmode="numeric" enterkeyhint="done" pattern="[0-9]*" maxlength="5" placeholder="0">
             </div>
           </div>
         </div>
@@ -208,19 +208,19 @@
 
             <div class="field">
               <label>Demand - Y Class (Economy)</label>
-              <input id="demandY" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="5" placeholder="0">
+              <input id="demandY" type="text" inputmode="numeric" enterkeyhint="next" pattern="[0-9]*" maxlength="5" placeholder="0">
             </div>
             <div class="field">
               <label>Demand - J Class (Business)</label>
-              <input id="demandJ" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="5" placeholder="0">
+              <input id="demandJ" type="text" inputmode="numeric" enterkeyhint="next" pattern="[0-9]*" maxlength="5" placeholder="0">
             </div>
             <div class="field">
               <label>Demand - F Class (First)</label>
-              <input id="demandF" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="5" placeholder="0">
+              <input id="demandF" type="text" inputmode="numeric" enterkeyhint="next" pattern="[0-9]*" maxlength="5" placeholder="0">
             </div>
             <div class="field">
               <label>Total number of seats in the plane</label>
-              <input id="planeSeats" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="5" placeholder="0">
+              <input id="planeSeats" type="text" inputmode="numeric" enterkeyhint="done" pattern="[0-9]*" maxlength="5" placeholder="0">
             </div>
           </div>
         </div>
@@ -332,7 +332,7 @@ function renderDrop(){
     drop.style.display = 'none';
     drop.innerHTML = '';
   }
-  const empty = dropOpen && search.value && !filtered.length;
+  const empty = dropOpen && search.value.length >= 2 && !filtered.length;
   noRes.style.display = empty ? 'block' : 'none';
   if (search.value) $('acNoResQ').textContent = search.value;
 }
@@ -394,6 +394,19 @@ document.addEventListener('click', e => {
     if (dropOpen){ dropOpen = false; renderBadge(); renderDrop(); }
   }
 });
+
+/* ---------- Enter advances to the next field (consistent across browsers) ---------- */
+function enterAdvance(group){
+  group.forEach((el, i) => el.addEventListener('keydown', e => {
+    if (e.key === 'Enter'){
+      e.preventDefault();
+      const next = group[i + 1];
+      if (next) next.focus(); else el.blur();
+    }
+  }));
+}
+enterAdvance([yB, jB, fB]);
+enterAdvance([dY, dJ, dF, pS]);
 
 /* ---------- init ---------- */
 filtered = match('');
