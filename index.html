@@ -343,6 +343,141 @@ function MfrFilter({
   }), m))));
 }
 
+// ── Single-aircraft picker (searchable, for anchors) ────────────────────────
+function PlanePicker({
+  value,
+  onChange
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const ref = useRef(null);
+  const searchRef = useRef(null);
+  useEffect(() => {
+    if (!open) {
+      setQuery("");
+      return;
+    }
+    if (searchRef.current) searchRef.current.focus();
+    const handler = e => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+  const q = query.trim().toLowerCase();
+  const shown = (q ? P.filter(p => p.n.toLowerCase().includes(q) || p.m.toLowerCase().includes(q)) : P).slice(0, 80);
+  const pick = p => {
+    onChange(p.n);
+    setOpen(false);
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    ref: ref,
+    style: {
+      position: "relative",
+      flex: `1 1 ${rem(150)}`,
+      minWidth: rem(130)
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => setOpen(!open),
+    style: {
+      background: "#1a1a1a",
+      border: "0.0625rem solid #333",
+      borderRadius: rem(4),
+      color: value ? "#cfcfcf" : "#666",
+      padding: rem(6, 8),
+      fontSize: rem(13),
+      fontFamily: "'DM Mono', monospace",
+      cursor: "pointer",
+      width: "100%",
+      textAlign: "left",
+      whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      boxSizing: "border-box"
+    }
+  }, value || "Select aircraft", " \u25BE"), open && /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "absolute",
+      top: "100%",
+      left: 0,
+      minWidth: rem(240),
+      zIndex: 20,
+      background: "#1a1a1a",
+      border: "0.0625rem solid #333",
+      borderRadius: rem(4),
+      maxHeight: rem(300),
+      overflowY: "auto",
+      marginTop: rem(2)
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: rem(6, 10),
+      borderBottom: "0.0625rem solid #2a2a2a",
+      position: "sticky",
+      top: 0,
+      background: "#1a1a1a",
+      zIndex: 1
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    ref: searchRef,
+    type: "text",
+    value: query,
+    placeholder: "Search name or maker\u2026",
+    onChange: e => setQuery(e.target.value),
+    onKeyDown: e => {
+      if (e.key === "Enter" && shown.length > 0) {
+        e.preventDefault();
+        pick(shown[0]);
+      }
+    },
+    style: {
+      background: "#141414",
+      border: "0.0625rem solid #333",
+      borderRadius: rem(3),
+      color: "#ccc",
+      padding: rem(4, 8),
+      fontSize: rem(12),
+      fontFamily: "'DM Mono', monospace",
+      width: "100%",
+      boxSizing: "border-box",
+      outline: "none"
+    },
+    onFocus: e => e.target.style.borderColor = "#5a7",
+    onBlur: e => e.target.style.borderColor = "#333"
+  })), shown.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: rem(10),
+      fontSize: rem(12),
+      color: "#666",
+      fontFamily: "'DM Mono', monospace"
+    }
+  }, "No matches") : shown.map(p => /*#__PURE__*/React.createElement("div", {
+    key: p.n,
+    onClick: () => pick(p),
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      gap: rem(8),
+      padding: rem(6, 10),
+      fontSize: rem(12),
+      color: value === p.n ? "#7c8" : "#ccc",
+      cursor: "pointer",
+      fontFamily: "'DM Mono', monospace",
+      whiteSpace: "nowrap"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      overflow: "hidden",
+      textOverflow: "ellipsis"
+    }
+  }, p.n), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: "#555",
+      flexShrink: 0
+    }
+  }, p.m, " \xB7 ", p.p, "p")))));
+}
+
 // ── Fleet optimizer core ────────────────────────────────────────────────────
 // 1. Filter aircraft (range, runway, price, manufacturer), rank by $/capacity
 // 2. Enumerate 1- and 2-type fleets; score each by simulating per-aircraft
@@ -490,7 +625,7 @@ function CompPanel({
     }, fmt(Math.abs(cDiff)), " \xF7 ", fmt(Math.abs(pDiff)), "/day = ", cross.toFixed(1), " days"));
   })()));
 }
-function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers, horizon) {
+function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers, horizon, anchors, anchorAutoConfig, minAircraft) {
   const d = n(dist),
     r = n(rep) || 100;
   const yD = Math.floor(n(yDem) * r / 100);
@@ -503,9 +638,15 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
     mPp = n(maxPlanePrice),
     mFp = n(maxFleetPrice);
   const mAc = n(maxAircraft),
-    mAf = n(maxAirframes);
+    mAf = n(maxAirframes),
+    mMin = n(minAircraft);
   const eq = !!equalize,
     stp = stopovers ? 2 : 1;
+  // Easy mode flies aircraft at 1.5x their listed speed; Realism uses base speed. This
+  // raises daily flight count and shortens flight time (lowering the time-based A-check
+  // cost per flight). spd() returns the effective speed used in all speed-driven math.
+  const sm = mode === "easy" ? 1.5 : 1;
+  const spd = pl => pl.s * sm;
   const exMfr = excludedMfrs || new Set();
   if (d <= 0 || yDem == null || jDem == null || fDem == null || yD + jD + fD <= 0) return {
     fleet: [],
@@ -516,28 +657,78 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
   const jP = (pr.j[0] * d + pr.j[1]) * MARKUP.j;
   const fP = (pr.f[0] * d + pr.f[1]) * MARKUP.f;
   const totalCapNeeded = yD + 2 * jD + 3 * fD;
-
-  // Filter stepwise so we can report which constraint eliminated everything
   const fail = reason => ({
     fleet: [],
     summary: null,
     reason
   });
+
+  // ── Anchors: user-named planes forced into every candidate fleet ──
+  // Anchors are owned (sunk cost): they contribute to operating profit but never to
+  // purchase cost; the count is user-fixed and never consolidated away; config is the
+  // user's fixed Y/J/F (anchorAutoConfig off) or chosen by the optimizer (on). Anchors
+  // must physically fit the route (range incl. stopover, runway); the price and
+  // manufacturer filters do not apply since the player already owns them.
+  const anchorRaw = (anchors || []).filter(a => a && a.n && n(a.qty) > 0);
+  const anchorEntries = [];
+  for (const a of anchorRaw) {
+    const plane = P.find(p => p.n === a.n);
+    if (!plane) continue;
+    if (plane.r * stp < d) return fail(`Anchor ${plane.n} can't fly ${fmtN(d)} km${stp === 1 ? " — enable 2x Range" : ""}`);
+    if (mRw > 0 && plane.rw > mRw) return fail(`Anchor ${plane.n} needs more than a ${fmtN(mRw)} ft runway`);
+    const fixedCPF = (plane.f * spd(plane) * fP_ + plane.a / plane.h) * d / spd(plane);
+    const co2PP = plane.c * d * cP_;
+    let fixedCfg = null;
+    if (!anchorAutoConfig) {
+      const cap = plane.p;
+      const fs = a.f == null ? 0 : Math.min(Math.max(0, Math.floor(a.f)), Math.floor(cap / 3));
+      const js = a.j == null ? 0 : Math.min(Math.max(0, Math.floor(a.j)), Math.floor((cap - 3 * fs) / 2));
+      const yMax = cap - 3 * fs - 2 * js;
+      // Blank Economy => fill the remaining capacity with economy (the all-Y default).
+      // An explicit 0 means zero economy seats; only a left-blank field triggers the fill.
+      const ys = a.y == null ? yMax : Math.min(Math.max(0, Math.floor(a.y)), yMax);
+      fixedCfg = {
+        fs,
+        js,
+        ys
+      };
+    }
+    anchorEntries.push({
+      plane,
+      fixedCPF,
+      co2PP,
+      qty: Math.max(1, Math.floor(n(a.qty))),
+      fixedCfg,
+      anchor: true
+    });
+  }
+  const hasAnchors = anchorEntries.length > 0;
+
+  // Minimum-fleet-size floor. Anchors count toward it, so the floor on the *complement*
+  // (the planes we buy) is the requested minimum minus what's already owned. If a max is
+  // also set, the floor can't exceed it. cMin = 0 means no floor is active.
+  const anchorAC = anchorEntries.reduce((s, e) => s + e.qty, 0);
+  const mMinEff = mMin > 0 ? mAc > 0 ? Math.min(mMin, mAc) : mMin : 0;
+  const cMin = mMinEff > 0 ? Math.max(0, mMinEff - anchorAC) : 0;
+
+  // Filter stepwise so we can report which constraint eliminated everything. With
+  // anchors present an empty complement candidate set is not fatal (anchors-only is a
+  // valid fleet), so these messages only fire when there are no anchors to fall back on.
   const rangeOK = P.filter(p => p.r * stp >= d);
   const rwOK = rangeOK.filter(p => mRw <= 0 || p.rw <= mRw);
   const ppOK = rwOK.filter(p => mPp <= 0 || p["$"] <= mPp);
   const mfrOK = ppOK.filter(p => !exMfr.has(p.m));
-  if (mfrOK.length === 0) {
+  if (mfrOK.length === 0 && !hasAnchors) {
     if (rangeOK.length === 0) return fail(`No aircraft can fly ${fmtN(d)} km${stp === 1 ? " — try 2x Range (stopover)" : ""}`);
     if (rwOK.length === 0) return fail(`No in-range aircraft fits a ${fmtN(mRw)} ft runway`);
     if (ppOK.length === 0) return fail(`No qualifying aircraft costs under ${fmt(mPp)}`);
     return fail("The manufacturer filter excludes every qualifying aircraft");
   }
   const planeData = mfrOK.map(p => {
-    const rot = Math.min(Math.ceil(oH * p.s / d), Math.max(1, Math.floor(24 * p.s / d))); // sustainable daily flights
+    const rot = Math.min(Math.ceil(oH * spd(p) / d), Math.max(1, Math.floor(24 * spd(p) / d))); // sustainable daily flights
     if (rot <= 0) return null;
     // Fixed costs (fuel + A-check): per flight, independent of passengers
-    const fixedCPF = (p.f * p.s * fP_ + p.a / p.h) * d / p.s;
+    const fixedCPF = (p.f * spd(p) * fP_ + p.a / p.h) * d / spd(p);
     // CO2 cost: per actual passenger per route (not per flight)
     const co2PP = p.c * d * cP_;
     // For ranking: use capacity-based cost as conservative upper bound
@@ -556,7 +747,7 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
       costPerCap
     };
   }).filter(Boolean).sort((a, b) => a.costPerCap - b.costPerCap);
-  if (planeData.length === 0) return fail("Set Op Hrs/Day above 0");
+  if (planeData.length === 0 && !hasAnchors) return fail("Set Op Hrs/Day above 0");
 
   // ── Per-aircraft profit evaluator ──
   // evalOneAt: evaluate at exactly f flights
@@ -580,12 +771,16 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
       sY
     } : null;
   };
-  // evalOne: find best flight count (profit is concave over f, so exit after peak)
+  // evalOne: find best flight count. profit(f) is concave (served revenue saturates as
+  // flights fill demand, cost is linear), so the first f that fails to improve — whether
+  // a lower profit OR a null (empty, unprofitable flights once demand is exhausted) — is
+  // past the peak. Stopping there is exact and avoids scanning up to rot (huge at short
+  // routes), which is what made anchored short-haul fleets hang.
   const evalOne = (pd, rF, rJ, rY) => {
     let best = null;
     for (let f = 1; f <= pd.rot; f++) {
       const r = evalOneAt(pd, rF, rJ, rY, f);
-      if (r && (!best || r.profit > best.profit)) best = r;else if (best && r && r.profit < best.profit) break; // past peak
+      if (r && (!best || r.profit > best.profit)) best = r;else break; // past the peak (or never profitable, if best is still null)
     }
     return best;
   };
@@ -602,9 +797,9 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
     }
     if (entries.length <= 1) {
       // Single type: sequential evalOne
-      let rF = fD,
-        rJ = jD,
-        rY = yD,
+      let rF = rfD,
+        rJ = rjD,
+        rY = ryD,
         tp = 0;
       for (let q = 0; q < entries[0].qty; q++) {
         const r = evalOne(entries[0], rF, rJ, rY);
@@ -619,14 +814,20 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
       };
     }
 
-    // Two types: try each flight count for first type, let rest mop up
+    // Two types: try each flight count for first type, let rest mop up. ff never needs to
+    // exceed what saturates the first type's demand — beyond that it flies empty (pure cost)
+    // while the second type has no residual left to absorb, so total profit only falls. The
+    // bound is in capacity units (an F seat costs 3 units, J costs 2, Y costs 1): once the
+    // first type's flights supply more units than demanded, it's saturated. This also keeps
+    // the loop short at short routes, where first.rot is very large.
     const first = entries[0];
     let bestTotal = -Infinity;
     let bestFF = 1;
-    for (let ff = 1; ff <= first.rot; ff++) {
-      let rF = fD,
-        rJ = jD,
-        rY = yD,
+    const ffMax = Math.min(first.rot, Math.max(1, Math.ceil((3 * rfD + 2 * rjD + ryD) / first.plane.p)));
+    for (let ff = 1; ff <= ffMax; ff++) {
+      let rF = rfD,
+        rJ = rjD,
+        rY = ryD,
         tp = 0;
       for (let q = 0; q < first.qty; q++) {
         const r = evalOneAt(first, rF, rJ, rY, ff);
@@ -657,136 +858,16 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
     };
   };
 
-  // ── Step 1: Fleet selection ──
-  const hasBudget = mFp > 0;
-  const budget = hasBudget ? mFp : Infinity;
-  let bestProfit = -Infinity;
-  let rawFleet = [];
-
-  // Take top candidates: when budget-constrained, only consider affordable aircraft
-  const affordable = hasBudget ? planeData.filter(pd => pd.plane["$"] <= budget) : planeData;
-  const top = affordable.slice(0, 15);
-  if (top.length === 0) {
-    const cheapest = Math.min(...planeData.map(pd => pd.plane["$"]));
-    return fail(`Fleet budget ${fmt(budget)} is below the cheapest qualifying aircraft (${fmt(cheapest)})`);
-  }
-
-  // Track runner-up fleets for display
-  const topFleets = [];
-  const noteFleet = (profit, entries) => {
-    if (!(profit > 0)) return;
-    const purchase = entries.reduce((s, e) => s + e.plane["$"] * e.qty, 0);
-    // Pareto pruning: keep a fleet only if no other known fleet is at least as
-    // profitable AND at least as cheap (kills padded variants with idle planes)
-    for (let i = 0; i < topFleets.length; i++) {
-      const t = topFleets[i];
-      if (t.profit >= profit && t.purchase <= purchase) return;
-      if (profit >= t.profit && purchase <= t.purchase) {
-        topFleets.splice(i, 1);
-        i--;
-      }
-    }
-    topFleets.push({
-      key: entries.map(e => e.plane.n + "x" + e.qty).sort().join("|"),
-      profit,
-      purchase,
-      entries,
-      planes: entries.map(e => ({
-        n: e.plane.n,
-        qty: e.qty
-      }))
-    });
-    topFleets.sort((a, b) => b.profit - a.profit);
-    // Keep a deep frontier: cheap-but-decent fleets (the likely winners at short
-    // horizons) sit at the low-profit end and must not be truncated away.
-    if (topFleets.length > 60) topFleets.length = 60;
-  };
-
-  // Unified search: enumerate 1-type and 2-type fleets
-
-  // Single-type fleets
-  for (const a of top) {
-    let maxQ = Math.min(hasBudget ? Math.floor(budget / a.plane["$"]) : 20, 20);
-    if (mAc > 0) maxQ = Math.min(maxQ, mAc);
-    let prevProfit = -Infinity;
-    for (let q = 1; q <= maxQ; q++) {
-      const {
-        profit
-      } = evalFleet([{
-        ...a,
-        qty: q
-      }], budget);
-      noteFleet(profit, [{
-        ...a,
-        qty: q
-      }]);
-      if (profit > bestProfit) {
-        bestProfit = profit;
-        rawFleet = [{
-          ...a,
-          qty: q
-        }];
-      }
-      if (profit <= prevProfit) break;
-      prevProfit = profit;
-    }
-  }
-
-  // Two-type fleets (skip if max airframes = 1, or single-type mode)
-  if (mAf <= 0 || mAf >= 2) {
-    for (let i = 0; i < top.length; i++) {
-      for (let j = 0; j < top.length; j++) {
-        if (j === i) continue;
-        const a = top[i],
-          b = top[j];
-        let maxQA = Math.min(hasBudget ? Math.floor(budget / a.plane["$"]) : 10, 10);
-        if (mAc > 0) maxQA = Math.min(maxQA, mAc - 1);
-        for (let qA = 1; qA <= maxQA; qA++) {
-          const remBudget = hasBudget ? budget - qA * a.plane["$"] : Infinity;
-          let maxQB = Math.min(hasBudget ? Math.floor(remBudget / b.plane["$"]) : 10, 10);
-          if (mAc > 0) maxQB = Math.min(maxQB, mAc - qA);
-          for (let qB = 1; qB <= maxQB; qB++) {
-            const result = evalFleet([{
-              ...a,
-              qty: qA
-            }, {
-              ...b,
-              qty: qB
-            }], budget);
-            noteFleet(result.profit, [{
-              ...a,
-              qty: qA,
-              rot: result.ff || a.rot
-            }, {
-              ...b,
-              qty: qB
-            }]);
-            if (result.profit > bestProfit) {
-              bestProfit = result.profit;
-              rawFleet = [{
-                ...a,
-                qty: qA,
-                rot: result.ff || a.rot
-              }, {
-                ...b,
-                qty: qB
-              }];
-            }
-          }
-        }
-      }
-    }
-  }
-  if (rawFleet.length === 0 || bestProfit <= 0) return fail("No profitable fleet — operating costs exceed revenue at these settings");
-  const winnerKey = rawFleet.map(e => e.plane.n + "x" + e.qty).sort().join("|");
-
-  // ── Step 2: Allocate seats per aircraft, optimizing flight count ──
-  // Helpers for Step-2 allocation. tmr = true max rotations from plane speed (never the
-  // throttled rot stored on two-type entries). cfgForF sizes one uniform config for a
-  // type flying F total flights against a demand pool. bestF finds the profit-max F
-  // (profit is concave in F). pushType emits a type's planes (sharing one config) at the
-  // given per-plane flight counts, attributing demand sequentially and merging identical rows.
-  const tmr = plane => Math.min(Math.ceil(oH * plane.s / d), Math.max(1, Math.floor(24 * plane.s / d)));
+  // ── Allocation helpers (defined before Step 1 so the complement search can run
+  // against the residual demand left after anchors) ──
+  // tmr = true max rotations from plane speed (never the throttled rot stored on two-type
+  // entries). cfgForF sizes one uniform optimized config for a type flying F total flights
+  // against a demand pool. bestF finds the profit-max F (concave in F). bestFFixed does the
+  // same but with a fixed user config (and a park/F=0 baseline, so a fixed-config anchor
+  // never flies at an operating loss in normal mode — it parks). pushType emits a type's
+  // planes sharing one config at given per-plane flight counts, merging identical rows;
+  // with keepIdle it also emits 0-flight "redundant" rows for owned anchors not needed here.
+  const tmr = plane => Math.min(Math.ceil(oH * spd(plane) / d), Math.max(1, Math.floor(24 * spd(plane) / d)));
   const cfgForF = (plane, fixedCPF, co2PP, F, aF, aJ, aY) => {
     const fs = Math.min(Math.floor(plane.p / 3), aF > 0 ? Math.ceil(aF / F) : 0);
     const capF = plane.p - 3 * fs;
@@ -822,12 +903,83 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
     }
     return best;
   };
-  const pushType = (target, plane, fixedCPF, co2PP, c, counts) => {
+  const cfgFixedAt = (fixedCPF, co2PP, fs, js, ys, F, aF, aJ, aY) => {
+    const sF = Math.min(fs * F, aF),
+      sJ = Math.min(js * F, aJ),
+      sY = Math.min(ys * F, aY);
+    const rev = sF * fP + sJ * jP + sY * yP;
+    const cost = fixedCPF * F + co2PP * (sF + sJ + sY);
+    return {
+      fs,
+      js,
+      ys,
+      sF,
+      sJ,
+      sY,
+      rev,
+      cost,
+      profit: rev - cost,
+      occupied: fs + js + ys > 0
+    };
+  };
+  const bestFFixed = (fixedCPF, co2PP, cfg, Fmax, aF, aJ, aY) => {
+    const {
+      fs,
+      js,
+      ys
+    } = cfg;
+    let best = {
+      F: 0,
+      fs,
+      js,
+      ys,
+      sF: 0,
+      sJ: 0,
+      sY: 0,
+      rev: 0,
+      cost: 0,
+      profit: 0,
+      occupied: fs + js + ys > 0
+    };
+    for (let F = 1; F <= Fmax; F++) {
+      const c = cfgFixedAt(fixedCPF, co2PP, fs, js, ys, F, aF, aJ, aY);
+      if (c.profit > best.profit) best = {
+        F,
+        ...c
+      };else if (F > 1 && c.profit < best.profit) break;
+    }
+    return best;
+  };
+  const pushType = (target, plane, fixedCPF, co2PP, c, counts, opts) => {
+    const anchor = !!(opts && opts.anchor),
+      keepIdle = !!(opts && opts.keepIdle);
     let tF = c.sF,
       tJ = c.sJ,
       tY = c.sY;
     for (const cnt of counts) {
-      if (cnt <= 0) continue;
+      if (cnt <= 0) {
+        if (!keepIdle) continue;
+        const prev = target[target.length - 1];
+        if (prev && prev.redundant && prev.plane.n === plane.n && prev.fSeats === c.fs && prev.jSeats === c.js && prev.ySeats === c.ys) {
+          prev.qty++;
+        } else {
+          target.push({
+            plane,
+            qty: 1,
+            fSeats: c.fs,
+            jSeats: c.js,
+            ySeats: c.ys,
+            rot: 0,
+            maxRot: tmr(plane),
+            profitPerDay: 0,
+            revenuePerDay: 0,
+            costPerDay: 0,
+            anchor,
+            redundant: true
+          });
+        }
+        continue;
+      }
       const pF = Math.min(c.fs * cnt, tF),
         pJ = Math.min(c.js * cnt, tJ),
         pY = Math.min(c.ys * cnt, tY);
@@ -837,7 +989,7 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
       const rev = pF * fP + pJ * jP + pY * yP;
       const cost = fixedCPF * cnt + co2PP * (pF + pJ + pY);
       const prev = target[target.length - 1];
-      if (prev && prev.plane.n === plane.n && prev.fSeats === c.fs && prev.jSeats === c.js && prev.ySeats === c.ys && prev.rot === cnt) {
+      if (prev && !prev.redundant && prev.anchor === anchor && prev.plane.n === plane.n && prev.fSeats === c.fs && prev.jSeats === c.js && prev.ySeats === c.ys && prev.rot === cnt) {
         prev.qty++;
         prev.profitPerDay += rev - cost;
         prev.revenuePerDay += rev;
@@ -853,27 +1005,258 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
           maxRot: tmr(plane),
           profitPerDay: rev - cost,
           revenuePerDay: rev,
-          costPerDay: cost
+          costPerDay: cost,
+          anchor
         });
       }
     }
   };
 
-  // Allocate a fleet (winner or runner-up) into concrete configs & flight counts
+  // Place owned anchors into `target`, consuming from `rem` (mutates both). Normal mode:
+  // each anchor flies its profit-max total flights (fixed or optimized config), spread
+  // front-loaded across its user-fixed count; surplus planes show as redundant (0 flights).
+  const placeAnchorsNormal = (target, rem) => {
+    for (const e of anchorEntries) {
+      const mr = tmr(e.plane);
+      let c, Ftot;
+      if (e.fixedCfg) {
+        c = bestFFixed(e.fixedCPF, e.co2PP, e.fixedCfg, mr * e.qty, rem.F, rem.J, rem.Y);
+        Ftot = c.F;
+      } else {
+        const b = bestF(e.plane, e.fixedCPF, e.co2PP, mr * e.qty, rem.F, rem.J, rem.Y);
+        if (b && b.profit > 0) {
+          c = b;
+          Ftot = b.F;
+        } else {
+          c = b || {
+            fs: 0,
+            js: 0,
+            ys: e.plane.p,
+            sF: 0,
+            sJ: 0,
+            sY: 0,
+            profit: 0,
+            occupied: false
+          };
+          Ftot = 0;
+        }
+      }
+      const counts = [];
+      let left = Ftot;
+      for (let i = 0; i < e.qty; i++) {
+        const cc = Math.min(mr, left);
+        counts.push(cc);
+        left -= cc;
+      }
+      pushType(target, e.plane, e.fixedCPF, e.co2PP, c, counts, {
+        anchor: true,
+        keepIdle: true
+      });
+      rem.F -= c.sF;
+      rem.J -= c.sJ;
+      rem.Y -= c.sY;
+    }
+  };
+
+  // Residual demand the complement search runs against (full demand minus what anchors
+  // serve). Estimated with a normal-mode anchor pass; the final allocate() runs the same
+  // pass in normal mode (exact match) and folds anchors into the shared count under Equalize.
+  const _estRem = {
+    F: fD,
+    J: jD,
+    Y: yD
+  };
+  if (hasAnchors) placeAnchorsNormal([], _estRem);
+  const rfD = Math.max(0, _estRem.F),
+    rjD = Math.max(0, _estRem.J),
+    ryD = Math.max(0, _estRem.Y);
+
+  // ── Step 1: Fleet selection ──
+  const hasBudget = maxFleetPrice != null; // null = unlimited; 0 = "buy nothing" (complement blocked)
+  const budget = hasBudget ? mFp : Infinity;
+  // When max-aircraft is set it caps the whole fleet (anchors + complement), so the complement
+  // gets the remaining slots. cMaxAc = 0 means no complement planes allowed (anchors-only).
+  const cMaxAc = mAc > 0 ? Math.max(0, mAc - anchorAC) : 0;
+  let bestProfit = -Infinity;
+  let rawFleet = [];
+
+  // Take top candidates: when budget-constrained, only consider affordable aircraft.
+  // When Single Type (mAf=1) is set with anchors, the complement must be the same type as
+  // the anchor(s) so the whole fleet stays one type.
+  const anchorNames = hasAnchors ? new Set(anchorEntries.map(e => e.plane.n)) : null;
+  let affordable = hasBudget ? planeData.filter(pd => pd.plane["$"] <= budget) : planeData;
+  if (mAf === 1 && hasAnchors) affordable = affordable.filter(pd => anchorNames.has(pd.plane.n));
+  // Candidate pool = the most cost-efficient planes (lowest operating cost per seat; these win
+  // on daily profit and at long horizons) UNION the cheapest qualifying planes (lowest purchase
+  // price; these win net at short horizons, where capital cost dominates and a cheaper plane
+  // beats a more efficient one even if it leaves some demand unserved). Ranking on costPerCap
+  // alone misses the latter entirely, so the horizon search never sees them.
+  const POOL_CPC = 15,
+    POOL_PRICE = 12;
+  // Cheap picks must be able to serve this route's (residual) demand in a sane number of
+  // flights. Otherwise tiny aircraft (e.g. a 17-seat jet on a 300 km route, flying 70+ times a
+  // day) get picked purely for low price — exploding evaluation cost while serving almost
+  // nothing. The floor is demand-relative: thin routes still admit small planes (viable there),
+  // heavy routes trim them (they'd be useless anyway). It applies only to the cheap picks; the
+  // cost-efficient picks are large by construction and never trip this.
+  const dUnits = 3 * rfD + 2 * rjD + ryD;
+  const cheapMinCap = dUnits > 0 ? dUnits / 30 : 0;
+  const byPrice = [...affordable].filter(pd => pd.plane.p >= cheapMinCap).sort((a, b) => a.plane["$"] - b.plane["$"]);
+  const seenTop = new Set();
+  const top = [];
+  for (const pd of [...affordable.slice(0, POOL_CPC), ...byPrice.slice(0, POOL_PRICE)]) {
+    if (seenTop.has(pd.plane.n)) continue;
+    seenTop.add(pd.plane.n);
+    top.push(pd);
+  }
+  if (top.length === 0) {
+    // With anchors, no complement candidates is fine — anchors-only is a valid fleet.
+    // Without anchors, report the budget shortfall.
+    if (!hasAnchors) {
+      const cheapest = Math.min(...planeData.map(pd => pd.plane["$"]));
+      return fail(`Fleet budget ${fmt(budget)} is below the cheapest qualifying aircraft (${fmt(cheapest)})`);
+    }
+  }
+
+  // Track runner-up fleets for display
+  const topFleets = [];
+  const noteFleet = (profit, entries) => {
+    if (!(profit > 0)) return;
+    const purchase = entries.reduce((s, e) => s + e.plane["$"] * e.qty, 0);
+    // Pareto pruning: keep a fleet only if no other known fleet is at least as
+    // profitable AND at least as cheap (kills padded variants with idle planes)
+    for (let i = 0; i < topFleets.length; i++) {
+      const t = topFleets[i];
+      if (t.profit >= profit && t.purchase <= purchase) return;
+      if (profit >= t.profit && purchase <= t.purchase) {
+        topFleets.splice(i, 1);
+        i--;
+      }
+    }
+    topFleets.push({
+      key: entries.map(e => e.plane.n + "x" + e.qty).sort().join("|"),
+      profit,
+      purchase,
+      entries,
+      planes: entries.map(e => ({
+        n: e.plane.n,
+        qty: e.qty
+      }))
+    });
+    topFleets.sort((a, b) => b.profit - a.profit);
+    // Cap the frontier, but keep BOTH ends: the highest-profit fleets (no-horizon and
+    // long-horizon winners) AND the cheapest fleets (short-horizon net winners, which sit at
+    // the low-profit end). Truncating by profit alone — as this once did — dropped exactly the
+    // cheap fleets the horizon search needs. Rarely trips at the default pool (frontier stays
+    // small); matters when the pool is widened further.
+    if (topFleets.length > 120) {
+      const cheap = topFleets.slice(90).sort((a, b) => a.purchase - b.purchase).slice(0, 30);
+      topFleets.length = 90;
+      topFleets.push(...cheap);
+    }
+  };
+
+  // Unified search: enumerate 1-type and 2-type fleets
+
+  // Single-type fleets
+  for (const a of top) {
+    let maxQ = Math.min(hasBudget ? Math.floor(budget / a.plane["$"]) : 20, 20);
+    if (mAc > 0) maxQ = Math.min(maxQ, cMaxAc);
+    let prevProfit = -Infinity;
+    for (let q = 1; q <= maxQ; q++) {
+      const {
+        profit
+      } = evalFleet([{
+        ...a,
+        qty: q
+      }], budget);
+      noteFleet(profit, [{
+        ...a,
+        qty: q
+      }]);
+      if (profit > bestProfit) {
+        bestProfit = profit;
+        rawFleet = [{
+          ...a,
+          qty: q
+        }];
+      }
+      if (profit <= prevProfit) break;
+      prevProfit = profit;
+    }
+  }
+
+  // Two-type fleets (skip if max airframes = 1, or single-type mode)
+  if (mAf <= 0 || mAf >= 2) {
+    for (let i = 0; i < top.length; i++) {
+      for (let j = 0; j < top.length; j++) {
+        if (j === i) continue;
+        const a = top[i],
+          b = top[j];
+        let maxQA = Math.min(hasBudget ? Math.floor(budget / a.plane["$"]) : 10, 10);
+        if (mAc > 0) maxQA = Math.min(maxQA, cMaxAc - 1);
+        for (let qA = 1; qA <= maxQA; qA++) {
+          const remBudget = hasBudget ? budget - qA * a.plane["$"] : Infinity;
+          let maxQB = Math.min(hasBudget ? Math.floor(remBudget / b.plane["$"]) : 10, 10);
+          if (mAc > 0) maxQB = Math.min(maxQB, cMaxAc - qA);
+          for (let qB = 1; qB <= maxQB; qB++) {
+            const result = evalFleet([{
+              ...a,
+              qty: qA
+            }, {
+              ...b,
+              qty: qB
+            }], budget);
+            noteFleet(result.profit, [{
+              ...a,
+              qty: qA,
+              rot: result.ff || a.rot
+            }, {
+              ...b,
+              qty: qB
+            }]);
+            if (result.profit > bestProfit) {
+              bestProfit = result.profit;
+              rawFleet = [{
+                ...a,
+                qty: qA,
+                rot: result.ff || a.rot
+              }, {
+                ...b,
+                qty: qB
+              }];
+            }
+          }
+        }
+      }
+    }
+  }
+  if (rawFleet.length === 0 || bestProfit <= 0) {
+    if (!hasAnchors) return fail("No profitable fleet — operating costs exceed revenue at these settings");
+    rawFleet = []; // anchors-only: a valid fleet even with no profitable complement to add
+  }
+
+  // ── Step 2: Allocate seats per aircraft, optimizing flight count ──
+  // (Allocation helpers tmr/cfgForF/bestF/bestFFixed/pushType and the anchor pass are
+  // defined above Step 1 so the complement search can use the post-anchor residual.)
+
+  // Allocate a fleet (winner or runner-up) into concrete configs & flight counts. Owned
+  // anchors are always included first (forced; user-fixed count never consolidated away),
+  // then the complement entries fill the residual demand.
   const allocate = entries => {
     let remF = fD,
       remJ = jD,
       remY = yD;
     const fleet = [];
-    const totalAC = entries.reduce((s, e) => s + e.qty, 0);
+    const all = [...anchorEntries, ...entries];
+    const totalAC = all.reduce((s, e) => s + e.qty, 0);
     if (eq && totalAC > 1) {
-      // Equalize: every plane flies the SAME number of daily flights, so the in-game
-      // "Depart All" stays clean (no plane maxing out while another still has flights).
-      // Capped at the smallest maxRot across the fleet's types; the shared count is
-      // chosen by total profit. Each type still uses one uniform config and only as many
-      // airframes as its demand share needs. Accepts a small efficiency cost (planes may
-      // fly below their own max) as the price of uniform scheduling.
-      const minMaxRot = entries.reduce((m, e) => Math.min(m, tmr(e.plane)), Infinity);
+      // Equalize: every flying plane flies the SAME daily flight count, so the in-game
+      // "Depart All" stays clean. Capped at the smallest maxRot across all flying types
+      // (anchors included); the shared count is chosen by total profit. Anchors fly the
+      // shared count on as many of their owned planes as carry demand (surplus shown as
+      // redundant), and are kept even when forced to fly at an operating loss.
+      const minMaxRot = all.reduce((m, e) => Math.min(m, tmr(e.plane)), Infinity);
       let bestEqProfit = -Infinity,
         bestEqFleet = null,
         bestRem = null;
@@ -883,28 +1266,76 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
           rJ = jD,
           rY = yD,
           eqProfit = 0;
-        for (const entry of entries) {
+        for (const entry of all) {
           const {
             plane,
             fixedCPF,
             co2PP,
             qty
           } = entry;
-          let pick = null;
-          for (let nq = 1; nq <= qty; nq++) {
-            const c = cfgForF(plane, fixedCPF, co2PP, nq * eqF, rF, rJ, rY);
-            if (!c.occupied) continue;
-            if (!pick || c.profit > pick.profit) pick = {
-              nq,
-              ...c
-            };else if (pick && c.profit < pick.profit) break;
-          }
-          if (pick && pick.profit > 0) {
-            pushType(cand, plane, fixedCPF, co2PP, pick, Array(pick.nq).fill(eqF));
-            eqProfit += pick.profit;
-            rF -= pick.sF;
-            rJ -= pick.sJ;
-            rY -= pick.sY;
+          if (entry.anchor) {
+            // Owned planes: fly eqF on as many of the qty planes as still carry demand
+            // (served stops growing -> the rest would fly empty, so park them as redundant).
+            let nFly = 0,
+              c = null,
+              bestServed = -1;
+            for (let k = 1; k <= qty; k++) {
+              const cc = entry.fixedCfg ? cfgFixedAt(fixedCPF, co2PP, entry.fixedCfg.fs, entry.fixedCfg.js, entry.fixedCfg.ys, k * eqF, rF, rJ, rY) : cfgForF(plane, fixedCPF, co2PP, k * eqF, rF, rJ, rY);
+              const served = cc.sF + cc.sJ + cc.sY;
+              if (cc.occupied && served > bestServed) {
+                bestServed = served;
+                nFly = k;
+                c = cc;
+              } else if (c && served <= bestServed) break;
+            }
+            if (!c) {
+              // serves no demand at all — display config only, every plane redundant
+              const fc = entry.fixedCfg || {
+                fs: 0,
+                js: 0,
+                ys: plane.p
+              };
+              const c0 = {
+                fs: fc.fs,
+                js: fc.js,
+                ys: fc.ys,
+                sF: 0,
+                sJ: 0,
+                sY: 0,
+                profit: 0
+              };
+              pushType(cand, plane, fixedCPF, co2PP, c0, Array(qty).fill(0), {
+                anchor: true,
+                keepIdle: true
+              });
+            } else {
+              const counts = Array(nFly).fill(eqF).concat(Array(qty - nFly).fill(0));
+              pushType(cand, plane, fixedCPF, co2PP, c, counts, {
+                anchor: true,
+                keepIdle: true
+              });
+              eqProfit += c.profit;
+              rF -= c.sF;
+              rJ -= c.sJ;
+              rY -= c.sY;
+            }
+          } else {
+            let pick = null;
+            for (let nq = 1; nq <= qty; nq++) {
+              const c = cfgForF(plane, fixedCPF, co2PP, nq * eqF, rF, rJ, rY);
+              if (!c.occupied) continue;
+              if (!pick || c.profit > pick.profit) pick = {
+                nq,
+                ...c
+              };else if (pick && c.profit < pick.profit) break;
+            }
+            if (pick && pick.profit > 0) {
+              pushType(cand, plane, fixedCPF, co2PP, pick, Array(pick.nq).fill(eqF));
+              eqProfit += pick.profit;
+              rF -= pick.sF;
+              rJ -= pick.sJ;
+              rY -= pick.sY;
+            }
           }
         }
         if (eqProfit > bestEqProfit) {
@@ -920,9 +1351,17 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
         remY = bestRem[2];
       }
     } else {
-      // Normal: per-type uniform config, then consolidate to the fewest airframes each
-      // flying their max rotations - no idle planes, no zero-revenue flights. Flights
-      // beyond the first plane's maxRot spill onto additional planes (front-loaded).
+      // Normal: anchors first (forced, front-loaded across their fixed count, surplus
+      // redundant), then complement consolidated to the fewest airframes at max rotations.
+      const rem = {
+        F: remF,
+        J: remJ,
+        Y: remY
+      };
+      placeAnchorsNormal(fleet, rem);
+      remF = rem.F;
+      remJ = rem.J;
+      remY = rem.Y;
       for (const entry of entries) {
         if (remF <= 0 && remJ <= 0 && remY <= 0) break;
         const {
@@ -955,12 +1394,153 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
       remY
     };
   };
-  const {
-    fleet,
-    remF,
-    remJ,
-    remY
-  } = allocate(rawFleet);
+
+  // Anchors are sunk: purchase cost and payback count only the complement (the new buy).
+  // Profit shown is the whole fleet (anchors contribute operating profit, possibly a loss).
+  const splitPurchase = fl => fl.reduce((s, f) => s + (f.anchor ? 0 : f.qty * f.plane["$"]), 0);
+  const splitCompProfit = fl => fl.reduce((s, f) => s + (f.anchor ? 0 : f.profitPerDay), 0);
+  const anchorSpend = fl => fl.reduce((s, f) => s + (f.anchor ? f.qty * f.plane["$"] : 0), 0);
+  // Label a fleet by its real bought combo (ground truth post-allocation), not the
+  // pre-allocation candidate — a candidate's second type can end up unneeded once
+  // allocation runs, and showing it anyway misrepresents what's actually in the fleet.
+  // Anchors are excluded (they're owned, not part of "what to buy", and are already
+  // shown per-row as "(owned)" in the expanded detail).
+  const fleetLabel = fl => {
+    const m = new Map();
+    for (const f of fl) {
+      if (f.anchor) continue;
+      m.set(f.plane.n, (m.get(f.plane.n) || 0) + f.qty);
+    }
+    return Array.from(m, ([nm, qty]) => `${qty}× ${nm}`).join(" + ") || "(owned only)";
+  };
+  // Signature of an allocated fleet (plane, qty, config, rotations). Two candidates with
+  // different search combos can allocate to the identical fleet — this lets us dedup them.
+  const fleetSig = fl => fl.map(f => `${f.plane.n}#${f.qty}#${f.ySeats},${f.jSeats},${f.fSeats}#${f.rot}#${f.anchor ? 1 : 0}#${f.redundant ? 1 : 0}`).sort().join("|");
+
+  // ── Minimum-fleet-size floor (counts anchors; cMin is the floor on the complement) ──
+  // A type's flights can be spread across more planes with no change to its config, served
+  // demand, or profit — so a fleet can always grow to cMin planes by giving each plane fewer
+  // flights. Only when a fleet's profitable flights run out before cMin do extra planes go
+  // idle (redundant). compFlights = flights available to spread; floorShort = planes that
+  // would be forced idle. Ranking prefers fleets with the fewest forced-idle planes (usually
+  // a smaller airframe, which flies more times), then profit — exactly the agreed behavior.
+  const compFlights = fl => fl.reduce((s, f) => s + (f.anchor || f.redundant ? 0 : f.qty * f.rot), 0);
+  const floorShort = fl => cMin > 0 ? Math.max(0, cMin - compFlights(fl)) : 0;
+  const spreadToFloor = fl => {
+    if (!(cMin > 0)) return fl;
+    const compPlanes = fl.reduce((s, f) => s + (f.anchor ? 0 : f.qty), 0);
+    if (compPlanes >= cMin) return fl;
+    const anchors = fl.filter(f => f.anchor);
+    const flying = fl.filter(f => !f.anchor && !f.redundant && f.rot > 0);
+    const idle = fl.filter(f => !f.anchor && (f.redundant || f.rot <= 0));
+    const totalFlights = flying.reduce((s, f) => s + f.qty * f.rot, 0);
+    const targetFlying = Math.min(cMin, totalFlights);
+    // How many planes each flying row uses: start at its current count, then split flights
+    // onto more planes (each must keep >=1 flight) until we hit the target, favoring the row
+    // with the most spare flights so the spread stays even.
+    const rows = flying.map(f => ({
+      f,
+      planes: f.qty,
+      maxPlanes: f.qty * f.rot
+    }));
+    let have = rows.reduce((s, r) => s + r.planes, 0);
+    while (have < targetFlying) {
+      let bi = -1,
+        room = 0;
+      for (let i = 0; i < rows.length; i++) {
+        const rm = rows[i].maxPlanes - rows[i].planes;
+        if (rm > room) {
+          room = rm;
+          bi = i;
+        }
+      }
+      if (bi < 0) break;
+      rows[bi].planes++;
+      have++;
+    }
+    const out = [...anchors];
+    for (const r of rows) {
+      const F = r.f.qty * r.f.rot,
+        P = r.planes;
+      const fc = [];
+      let left = F;
+      for (let k = 0; k < P; k++) {
+        const c = Math.ceil(left / (P - k));
+        fc.push(c);
+        left -= c;
+      }
+      const per = {};
+      for (const c of fc) per[c] = (per[c] || 0) + 1;
+      for (const c of Object.keys(per).map(Number).sort((a, b) => b - a)) {
+        const q = per[c],
+          share = c * q / F;
+        out.push({
+          plane: r.f.plane,
+          qty: q,
+          fSeats: r.f.fSeats,
+          jSeats: r.f.jSeats,
+          ySeats: r.f.ySeats,
+          rot: c,
+          maxRot: r.f.maxRot,
+          profitPerDay: r.f.profitPerDay * share,
+          revenuePerDay: r.f.revenuePerDay * share,
+          costPerDay: r.f.costPerDay * share,
+          anchor: false
+        });
+      }
+    }
+    for (const f of idle) out.push(f);
+    // Flights ran out before cMin: the remaining planes can't fly profitably, so park them.
+    let nowPlanes = out.reduce((s, f) => s + (f.anchor ? 0 : f.qty), 0);
+    if (nowPlanes < cMin) {
+      const base = flying[0] || idle[0];
+      if (base) {
+        const add = cMin - nowPlanes;
+        const exist = out.find(f => !f.anchor && f.redundant && f.plane.n === base.plane.n);
+        if (exist) exist.qty += add;else out.push({
+          plane: base.plane,
+          qty: add,
+          fSeats: base.fSeats,
+          jSeats: base.jSeats,
+          ySeats: base.ySeats,
+          rot: 0,
+          maxRot: base.maxRot,
+          profitPerDay: 0,
+          revenuePerDay: 0,
+          costPerDay: 0,
+          anchor: false,
+          redundant: true
+        });
+      }
+    }
+    return out;
+  };
+
+  // Build a ranked candidate from a set of complement entries: allocate, grow to the floor
+  // (if any), and measure on the resulting fleet so purchase/payback count every plane bought
+  // (including any parked at the floor). `short` = planes forced idle by the floor.
+  const mkCand = entries => {
+    const a0 = allocate(entries);
+    const fleet = cMin > 0 ? spreadToFloor(a0.fleet) : a0.fleet;
+    return {
+      planes: fleetLabel(fleet),
+      purchase: splitPurchase(fleet),
+      profit: fleet.reduce((s, f) => s + f.profitPerDay, 0),
+      payProfit: splitCompProfit(fleet),
+      fleet,
+      remF: a0.remF,
+      remJ: a0.remJ,
+      remY: a0.remY,
+      short: floorShort(fleet)
+    };
+  };
+  // When a floor is active, also weigh every single airframe on its own — the most profitable
+  // way to keep all N planes flying is often a smaller plane than the unconstrained winner,
+  // and that option may not survive the Pareto frontier.
+  const floorSingles = cMin > 0 ? top.map(a => [{
+    ...a,
+    qty: cMin
+  }]) : [];
 
   // ── Horizon mode: rank the whole Pareto frontier by net profit at T days ──
   // net(T) = profit/day × T − fleet purchase cost. The net-maximizer for any T
@@ -969,28 +1549,39 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
   // fleets this search enumerates). Fleets still underwater at T are excluded.
   const T = horizon > 0 ? horizon : null;
   if (T) {
-    const cands = topFleets.map(t => {
-      const a = allocate(t.entries);
-      const profit = a.fleet.reduce((s2, f2) => s2 + f2.profitPerDay, 0);
-      const purchase = a.fleet.reduce((s2, f2) => s2 + f2.qty * f2.plane["$"], 0);
-      return {
-        planes: t.planes,
-        purchase,
-        profit,
-        fleet: a.fleet,
-        remF: a.remF,
-        remJ: a.remJ,
-        remY: a.remY,
-        net: profit * T - purchase
-      };
-    }).filter(c => c.profit > 0 && c.net > 0);
-    if (cands.length === 0) return fail(`No fleet pays back within ${fmtN(T)} days — every option is still in the hole`);
-    cands.sort((x, y) => y.net - x.net);
-    const w = cands[0];
-    const hAlternatives = cands.slice(1, 4).map(c => ({
+    const cands = [...topFleets.map(t => t.entries), ...floorSingles].map(entries => {
+      const c = mkCand(entries);
+      c.net = c.payProfit * T - c.purchase;
+      return c;
+    });
+    // Anchors-only (buy nothing) is always an option when anchors exist: nothing to recoup.
+    if (hasAnchors) {
+      const c = mkCand([]);
+      c.net = 0;
+      cands.push(c);
+    }
+    // Keep the buy-nothing baseline plus any complement that recoups its own cost by T.
+    const keep = cands.filter(c => c.purchase === 0 || c.payProfit > 0 && c.net > 0);
+    if (keep.length === 0) return fail(`No fleet pays back within ${fmtN(T)} days — every option is still in the hole`);
+    // Floor first: fewest planes forced idle (so all N fly where possible), then net profit.
+    keep.sort((x, y) => x.short - y.short || y.net - x.net);
+    // Dedup by allocated-fleet signature: distinct search combos can allocate to the same
+    // actual fleet (e.g. a 2-type candidate whose 2nd type gets trimmed), which would
+    // otherwise show the winner again as a runner-up, or the same fleet twice.
+    const seenH = new Set();
+    const uniq = [];
+    for (const c of keep) {
+      const sg = fleetSig(c.fleet);
+      if (seenH.has(sg)) continue;
+      seenH.add(sg);
+      uniq.push(c);
+    }
+    const w = uniq[0];
+    const hAlternatives = uniq.slice(1, 4).map(c => ({
       planes: c.planes,
       purchase: c.purchase,
       profit: c.profit,
+      payProfit: c.payProfit,
       fleet: c.fleet,
       net: c.net
     }));
@@ -1002,6 +1593,9 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
         totalCost: w.fleet.reduce((s2, f2) => s2 + f2.costPerDay, 0),
         totalAircraft: w.fleet.reduce((s2, f2) => s2 + f2.qty, 0),
         totalPurchase: w.purchase,
+        complementProfit: w.payProfit,
+        anchorPurchase: anchorSpend(w.fleet),
+        hasAnchors,
         servedY: yD - Math.max(0, w.remY),
         servedJ: jD - Math.max(0, w.remJ),
         servedF: fD - Math.max(0, w.remF),
@@ -1014,45 +1608,69 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
         totalCapNeeded,
         alternatives: hAlternatives,
         horizon: T,
-        net: w.net
+        net: w.net,
+        _pool: top.length
       }
     };
   }
 
-  // Re-allocate runner-ups so they can show real configs & flight counts
-  const alternatives = topFleets.filter(t => t.key !== winnerKey).slice(0, 3).map(t => {
-    const a = allocate(t.entries);
-    return {
-      planes: t.planes,
-      purchase: t.purchase,
-      profit: a.fleet.reduce((s2, f2) => s2 + f2.profitPerDay, 0),
-      fleet: a.fleet
-    };
-  }).filter(t => t.profit > 0);
-  const totalProfit = fleet.reduce((s, f) => s + f.profitPerDay, 0);
-  const totalRevenue = fleet.reduce((s, f) => s + f.revenuePerDay, 0);
-  const totalCost = fleet.reduce((s, f) => s + f.costPerDay, 0);
-  const totalAircraft = fleet.reduce((s, f) => s + f.qty, 0);
-  const totalPurchase = fleet.reduce((s, f) => s + f.qty * f.plane["$"], 0);
+  // ── No-horizon mode: rank the frontier by actual daily profit ──────────────
+  // Pick the winner by its *allocated* daily profit, not the search's profit
+  // estimate. The estimate can rank a fleet first that a real allocation then
+  // beats, which is how a runner-up could out-earn the winner (or strictly
+  // dominate it). Allocating every frontier fleet and taking the argmax — the
+  // same approach the horizon branch uses for net — makes that impossible.
+  const ncands = [...topFleets.map(t => t.entries), ...floorSingles].map(entries => mkCand(entries));
+  // Anchors-only (buy nothing) is always an option when anchors exist.
+  if (hasAnchors) ncands.push(mkCand([]));
+  // Keep the buy-nothing baseline plus any complement that operates at a profit;
+  // among those the highest total daily profit wins (anchor profit varies with how
+  // much demand the complement leaves it, so rank on the whole-fleet total).
+  const nkeep = ncands.filter(c => c.purchase === 0 || c.payProfit > 0);
+  if (nkeep.length === 0) return fail("No profitable fleet — operating costs exceed revenue at these settings");
+  // Floor first: fewest planes forced idle (so all N fly where possible), then daily profit.
+  nkeep.sort((x, y) => x.short - y.short || y.profit - x.profit);
+  // Dedup by allocated-fleet signature (a 2-type candidate whose 2nd type gets
+  // trimmed can allocate to the identical fleet as a 1-type candidate).
+  const nseen = new Set();
+  const nuniq = [];
+  for (const c of nkeep) {
+    const sg = fleetSig(c.fleet);
+    if (nseen.has(sg)) continue;
+    nseen.add(sg);
+    nuniq.push(c);
+  }
+  const nwin = nuniq[0];
+  const alternatives = nuniq.slice(1, 4).map(c => ({
+    planes: c.planes,
+    purchase: c.purchase,
+    profit: c.profit,
+    payProfit: c.payProfit,
+    fleet: c.fleet
+  }));
   return {
-    fleet,
+    fleet: nwin.fleet,
     summary: {
-      totalProfit,
-      totalRevenue,
-      totalCost,
-      totalAircraft,
-      totalPurchase,
-      servedY: yD - Math.max(0, remY),
-      servedJ: jD - Math.max(0, remJ),
-      servedF: fD - Math.max(0, remF),
-      unservedY: Math.max(0, remY),
-      unservedJ: Math.max(0, remJ),
-      unservedF: Math.max(0, remF),
+      totalProfit: nwin.profit,
+      totalRevenue: nwin.fleet.reduce((s, f) => s + f.revenuePerDay, 0),
+      totalCost: nwin.fleet.reduce((s, f) => s + f.costPerDay, 0),
+      totalAircraft: nwin.fleet.reduce((s, f) => s + f.qty, 0),
+      totalPurchase: nwin.purchase,
+      complementProfit: nwin.payProfit,
+      anchorPurchase: anchorSpend(nwin.fleet),
+      hasAnchors,
+      servedY: yD - Math.max(0, nwin.remY),
+      servedJ: jD - Math.max(0, nwin.remJ),
+      servedF: fD - Math.max(0, nwin.remF),
+      unservedY: Math.max(0, nwin.remY),
+      unservedJ: Math.max(0, nwin.remJ),
+      unservedF: Math.max(0, nwin.remF),
       yPrice: yP,
       jPrice: jP,
       fPrice: fP,
       totalCapNeeded,
-      alternatives
+      alternatives,
+      _pool: top.length
     }
   };
 }
@@ -1061,7 +1679,9 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
 function createOptimizerWorker() {
   if (typeof Worker === "undefined" || typeof URL === "undefined") return null;
   try {
-    const src = ["const P=" + JSON.stringify(P) + ";", "const PRICING=" + JSON.stringify(PRICING) + ";", "const MARKUP=" + JSON.stringify(MARKUP) + ";", "const n=" + n.toString() + ";", fmt.toString(), fmtN.toString(), optimizeFleet.toString(), 'self.onmessage=function(e){var d=e.data,p=d.params;p[12]=new Set(p[12]);self.postMessage({gen:d.gen,result:optimizeFleet.apply(null,p)});};'].join("\n");
+    const src = ["const P=" + JSON.stringify(P) + ";", "const PRICING=" + JSON.stringify(PRICING) + ";", "const MARKUP=" + JSON.stringify(MARKUP) + ";", "const n=" + n.toString() + ";", fmt.toString(), fmtN.toString(), optimizeFleet.toString(), "function _run(p){p=p.slice();p[12]=new Set(p[12]);return optimizeFleet.apply(null,p);}", "self.onmessage=function(e){var d=e.data;" + "if(d.bench){var out=[];for(var i=0;i<d.suite.length;i++){var sc=d.suite[i];_run(sc.params);" +
+    // warmup
+    "var ts=[],rr=null;for(var k=0;k<d.iters;k++){var t0=performance.now();rr=_run(sc.params);ts.push(performance.now()-t0);}" + "ts.sort(function(a,b){return a-b;});var med=ts[Math.floor(ts.length/2)];" + "var fl=rr&&rr.fleet?rr.fleet.map(function(f){return f.qty+'x '+f.plane.n;}).join(' + '):'';" + "out.push({label:sc.label,ms:med,pool:rr&&rr.summary&&rr.summary._pool||0,fleet:fl||(rr&&rr.error)||'—',aircraft:rr&&rr.summary?rr.summary.totalAircraft:0});}" + "self.postMessage({bench:true,results:out});" + "}else{var t0=performance.now();var result=_run(d.params);var computeMs=performance.now()-t0;" + "self.postMessage({gen:d.gen,result:result,computeMs:computeMs});}};"].join("\n");
     return new Worker(URL.createObjectURL(new Blob([src], {
       type: "application/javascript"
     })));
@@ -1085,9 +1705,13 @@ function FleetOptimizer() {
   const [excludedMfrs, setExcludedMfrs] = useState(new Set());
   const [maxAircraft, setMaxAircraft] = useState(null);
   const [maxAirframes, setMaxAirframes] = useState(null);
+  const [minAircraft, setMinAircraft] = useState(null);
   const [equalize, setEqualize] = useState(false);
   const [stopovers, setStopover] = useState(false);
   const [horizon, setHorizon] = useState(null);
+  const [anchors, setAnchors] = useState([]); // [{ id, n, qty, f, j, y }]
+  const [anchorAutoConfig, setAnchorAutoConfig] = useState(false);
+  const [anchorOpen, setAnchorOpen] = useState(false);
   const [advOpen, setAdvOpen] = useState(false);
   const [computing, setComputing] = useState(false);
   const workerRef = useRef(null);
@@ -1100,10 +1724,17 @@ function FleetOptimizer() {
   const [altOpen, setAltOpen] = useState(null);
   const [lockedA, setLockedA] = useState(null); // { id, profit, fleetCost, fleet, label } — snapshot; persists across input changes
   const [activeComp, setActiveComp] = useState(null); // { id, label } — which B is being compared; resets on input change
+  const [computeMs, setComputeMs] = useState(null); // last worker compute time (RC dev readout)
+  const [devOpen, setDevOpen] = useState(false);
+  const [benchRunning, setBenchRunning] = useState(false);
+  const [benchResults, setBenchResults] = useState(null);
+  const [benchDevice, setBenchDevice] = useState(null);
   const timerRef = useRef(null);
   const yRef = useRef(null);
   const jRef = useRef(null);
   const fRef = useRef(null);
+  const anchorRefs = useRef({}); // per-row { qty, y, j, f } refs for keyboard tab-advance
+
   const resetAll = () => {
     setDist(null);
     setMode("easy");
@@ -1120,17 +1751,45 @@ function FleetOptimizer() {
     setExcludedMfrs(new Set());
     setMaxAircraft(null);
     setMaxAirframes(null);
+    setMinAircraft(null);
     setEqualize(false);
     setStopover(false);
     setHorizon(null);
+    setAnchors([]);
+    setAnchorAutoConfig(false);
   };
+
+  // ── Anchor list helpers ──
+  const addAnchor = () => setAnchors(as => [...as, {
+    id: Date.now() + Math.random(),
+    n: null,
+    qty: null,
+    f: null,
+    j: null,
+    y: null
+  }]);
+  const removeAnchor = id => setAnchors(as => as.filter(a => a.id !== id));
+  const updateAnchor = (id, patch) => setAnchors(as => as.map(a => a.id === id ? {
+    ...a,
+    ...patch
+  } : a));
+  const pickAnchorPlane = (id, name) => updateAnchor(id, {
+    n: name
+  }); // leave config blank; empty Y => all-economy
+  const validAnchors = anchors.filter(a => a.n && (a.qty == null || n(a.qty) > 0));
   useEffect(() => {
     const w = createOptimizerWorker();
     workerRef.current = w;
     if (w) {
       w.onmessage = e => {
+        if (e.data.bench) {
+          setBenchResults(e.data.results);
+          setBenchRunning(false);
+          return;
+        }
         if (e.data.gen === genRef.current) {
           setResult(e.data.result);
+          setComputeMs(e.data.computeMs);
           setPending(false);
           setComputing(false);
           setAltOpen(null);
@@ -1146,7 +1805,14 @@ function FleetOptimizer() {
     setPending(true);
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      const params = [dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, [...excludedMfrs], maxAircraft, maxAirframes, equalize, stopovers, horizon];
+      const anchorsData = validAnchors.map(a => ({
+        n: a.n,
+        qty: n(a.qty) > 0 ? n(a.qty) : 1,
+        f: a.f == null ? null : n(a.f),
+        j: a.j == null ? null : n(a.j),
+        y: a.y == null ? null : n(a.y)
+      }));
+      const params = [dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, [...excludedMfrs], maxAircraft, maxAirframes, equalize, stopovers, horizon, anchorsData, anchorAutoConfig, minAircraft];
       if (workerRef.current) {
         genRef.current++;
         setComputing(true);
@@ -1156,20 +1822,126 @@ function FleetOptimizer() {
         });
       } else {
         params[12] = new Set(params[12]);
+        const _t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
         setResult(optimizeFleet(...params));
+        setComputeMs((typeof performance !== "undefined" ? performance.now() : Date.now()) - _t0);
         setPending(false);
         setAltOpen(null);
         setActiveComp(null);
       }
     }, 250);
     return () => clearTimeout(timerRef.current);
-  }, [dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers, horizon]);
+  }, [dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers, horizon, anchors, anchorAutoConfig, minAircraft]);
   const s = result.summary;
   const r = n(rep) || 100;
   const yD = Math.floor(n(yDem) * r / 100),
     jD = Math.floor(n(jDem) * r / 100),
     fD = Math.floor(n(fDem) * r / 100);
-  const advCount = [fuelKPrice !== 700, co2Quota !== 120, maxRunway != null, maxPlanePrice != null, maxFleetPrice != null, maxAircraft != null, maxAirframes != null, horizon != null].filter(Boolean).length;
+  const advCount = [fuelKPrice !== 700, co2Quota !== 120, maxRunway != null, maxPlanePrice != null, maxFleetPrice != null, minAircraft != null, maxAircraft != null, maxAirframes != null, horizon != null].filter(Boolean).length;
+  const VERSION = "v0.6.5";
+  const isRC = /-rc/.test(VERSION); // dev tooling (compute readout + benchmark) shows only in RC builds
+
+  // ── Dev benchmark (RC only): time a fixed scenario suite in the worker, off the UI thread,
+  // so we see real on-device numbers without typing conditions in by hand. Each scenario runs a
+  // few times; the worker reports the median plus the winning fleet as a sanity check. ──
+  const runBenchmark = () => {
+    if (benchRunning) return;
+    const A = [{
+      n: "B787-8",
+      qty: 2,
+      f: null,
+      j: null,
+      y: null
+    }]; // in-range anchor for the long route
+    const P_ = over => [10539, 568, 617, 161, "easy", 700, 120, 24, null, null, null, 100, [], null, null, false, false, null, [], false, null].map((v, i) => over && i in over ? over[i] : v);
+    const suite = [{
+      label: "long · no horizon",
+      params: P_({})
+    }, {
+      label: "long · 30d",
+      params: P_({
+        17: 30
+      })
+    }, {
+      label: "mid 3000 · 30d heavy",
+      params: P_({
+        0: 3000,
+        1: 900,
+        2: 400,
+        3: 150,
+        17: 30
+      })
+    }, {
+      label: "short 300 · 30d heavy",
+      params: P_({
+        0: 300,
+        1: 900,
+        2: 400,
+        3: 150,
+        17: 30
+      })
+    }, {
+      label: "short 300 · min 10",
+      params: P_({
+        0: 300,
+        1: 900,
+        2: 400,
+        3: 150,
+        17: 30,
+        20: 10
+      })
+    }, {
+      label: "long · 30d · 2 anchors",
+      params: P_({
+        17: 30,
+        18: A
+      })
+    }, {
+      label: "mid 3000 · 30d · equalize",
+      params: P_({
+        0: 3000,
+        1: 900,
+        2: 400,
+        3: 150,
+        15: true,
+        17: 30
+      })
+    }];
+    const dev = typeof navigator !== "undefined" ? `${navigator.hardwareConcurrency || "?"} cores${navigator.deviceMemory ? ` · ${navigator.deviceMemory}GB` : ""}` : "unknown";
+    setBenchDevice(dev);
+    setBenchResults(null);
+    setBenchRunning(true);
+    if (workerRef.current) {
+      workerRef.current.postMessage({
+        bench: true,
+        suite,
+        iters: 5
+      });
+    } else {
+      const out = suite.map(sc => {
+        const p = sc.params.slice();
+        p[12] = new Set(p[12]);
+        let rr = null;
+        const ts = [];
+        for (let k = 0; k < 5; k++) {
+          const t0 = performance.now();
+          rr = optimizeFleet(...p);
+          ts.push(performance.now() - t0);
+        }
+        ts.sort((a, b) => a - b);
+        const fl = rr && rr.fleet ? rr.fleet.map(f => `${f.qty}× ${f.plane.n}`).join(" + ") : "";
+        return {
+          label: sc.label,
+          ms: ts[2],
+          pool: rr && rr.summary && rr.summary._pool || 0,
+          fleet: fl || rr && rr.error || "—",
+          aircraft: rr && rr.summary ? rr.summary.totalAircraft : 0
+        };
+      });
+      setBenchResults(out);
+      setBenchRunning(false);
+    }
+  };
 
   // ── Scenario comparison ──
   // Candidates = current winner + Pareto runner-ups. `id` is a stable object
@@ -1179,6 +1951,7 @@ function FleetOptimizer() {
     id: result.fleet,
     profit: s.totalProfit,
     fleetCost: s.totalPurchase,
+    payProfit: s.complementProfit,
     fleet: result.fleet,
     rank: 0
   } : null;
@@ -1186,6 +1959,7 @@ function FleetOptimizer() {
     id: alt,
     profit: alt.profit,
     fleetCost: alt.purchase,
+    payProfit: alt.payProfit,
     fleet: alt.fleet,
     rank: i + 1
   })) : [];
@@ -1207,6 +1981,7 @@ function FleetOptimizer() {
         id: cand.id,
         profit: cand.profit,
         fleetCost: cand.fleetCost,
+        payProfit: cand.payProfit,
         fleet: cand.fleet,
         label: makeLabel(cand.rank)
       });
@@ -1285,7 +2060,11 @@ function FleetOptimizer() {
       color: "#555",
       marginTop: rem(2)
     }
-  }, "v0.6.4")), /*#__PURE__*/React.createElement("button", {
+  }, VERSION, isRC && computeMs != null ? /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: "#4a6"
+    }
+  }, " \xB7 ", Math.round(computeMs), " ms") : null)), /*#__PURE__*/React.createElement("button", {
     onClick: resetAll,
     style: {
       background: "none",
@@ -1420,21 +2199,21 @@ function FleetOptimizer() {
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      flex: `1.3 0 ${rem(110)}`,
+      flex: `1.3 0 ${rem(80)}`,
       minWidth: 0,
-      maxWidth: rem(280)
+      maxWidth: rem(240)
     }
   }, /*#__PURE__*/React.createElement(NumInput, {
-    label: "Distance (km)",
+    label: "Dist (km)",
     value: dist,
     onChange: setDist,
     placeholder: "km",
     advanceRef: yRef
   })), /*#__PURE__*/React.createElement("div", {
     style: {
-      flex: `1 0 ${rem(56)}`,
+      flex: `1 0 ${rem(48)}`,
       minWidth: 0,
-      maxWidth: rem(150)
+      maxWidth: rem(120)
     }
   }, /*#__PURE__*/React.createElement(NumInput, {
     label: "Y",
@@ -1449,9 +2228,9 @@ function FleetOptimizer() {
     }
   })), /*#__PURE__*/React.createElement("div", {
     style: {
-      flex: `1 0 ${rem(56)}`,
+      flex: `1 0 ${rem(48)}`,
       minWidth: 0,
-      maxWidth: rem(150)
+      maxWidth: rem(120)
     }
   }, /*#__PURE__*/React.createElement(NumInput, {
     label: "J",
@@ -1465,9 +2244,9 @@ function FleetOptimizer() {
     }
   })), /*#__PURE__*/React.createElement("div", {
     style: {
-      flex: `1 0 ${rem(56)}`,
+      flex: `0.7 0 ${rem(40)}`,
       minWidth: 0,
-      maxWidth: rem(150)
+      maxWidth: rem(80)
     }
   }, /*#__PURE__*/React.createElement(NumInput, {
     label: "F",
@@ -1478,14 +2257,15 @@ function FleetOptimizer() {
     onOverflow: () => {}
   })), /*#__PURE__*/React.createElement("div", {
     style: {
-      flex: `1 0 ${rem(86)}`,
+      flex: `0.7 0 ${rem(44)}`,
       minWidth: 0,
-      maxWidth: rem(170)
+      maxWidth: rem(80)
     }
   }, /*#__PURE__*/React.createElement(NumInput, {
-    label: "Op Hrs/Day",
+    label: "Hrs/d",
     value: opHrs,
-    onChange: setOpHrs
+    onChange: setOpHrs,
+    placeholder: "24"
   })))), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
@@ -1534,7 +2314,7 @@ function FleetOptimizer() {
   }, " \xB7 ", advCount, " set")), advOpen && /*#__PURE__*/React.createElement("div", {
     style: {
       display: "grid",
-      gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${rem(164)}), 1fr))`,
+      gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${rem(130)}), 1fr))`,
       gap: rem(10),
       marginTop: rem(6)
     }
@@ -1562,6 +2342,11 @@ function FleetOptimizer() {
     onChange: setMaxFleetPrice,
     placeholder: "unlimited"
   }), /*#__PURE__*/React.createElement(NumInput, {
+    label: "Min # Aircraft",
+    value: minAircraft,
+    onChange: setMinAircraft,
+    placeholder: "none"
+  }), /*#__PURE__*/React.createElement(NumInput, {
     label: "Max # Aircraft",
     value: maxAircraft,
     onChange: setMaxAircraft,
@@ -1576,7 +2361,186 @@ function FleetOptimizer() {
     value: horizon,
     onChange: setHorizon,
     placeholder: "unlimited"
-  }))), lockedA && /*#__PURE__*/React.createElement("div", {
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: rem(20)
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    onClick: () => setAnchorOpen(!anchorOpen),
+    style: {
+      fontSize: rem(11),
+      color: "#666",
+      textTransform: "uppercase",
+      letterSpacing: "0.05em",
+      cursor: "pointer",
+      userSelect: "none",
+      padding: rem(4, 0)
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: "#555"
+    }
+  }, anchorOpen ? "▾ " : "▸ "), "Anchor aircraft", validAnchors.length > 0 && /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: "#c86"
+    }
+  }, " \xB7 ", validAnchors.length, " owned")), anchorOpen && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: rem(6)
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: rem(11),
+      color: "#777",
+      lineHeight: 1.6,
+      marginBottom: rem(10)
+    }
+  }, "Force planes you already own into the fleet; the rest is optimized around them. Owned planes are a sunk cost \u2014 they add to profit (and can run an operating loss), but never to spend. They're exempt from the aircraft limits and are never sold off."), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: rem(8),
+      marginBottom: rem(12),
+      cursor: "pointer"
+    }
+  }, /*#__PURE__*/React.createElement(Check, {
+    checked: anchorAutoConfig,
+    onChange: e => setAnchorAutoConfig(e.target.checked),
+    size: 14
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: rem(12),
+      color: anchorAutoConfig ? "#5a7" : "#999",
+      fontFamily: "'DM Mono', monospace"
+    }
+  }, "Let the tool choose configs ", /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: "#666"
+    }
+  }, "(pay the in-game reconfigure cost)"))), anchors.map(a => {
+    const refs = anchorRefs.current[a.id] || (anchorRefs.current[a.id] = {
+      qty: {
+        current: null
+      },
+      y: {
+        current: null
+      },
+      j: {
+        current: null
+      },
+      f: {
+        current: null
+      }
+    });
+    const aCap = a.n ? (P.find(p => p.n === a.n) || {}).p : null;
+    return /*#__PURE__*/React.createElement("div", {
+      key: a.id,
+      style: {
+        display: "flex",
+        flexWrap: "wrap",
+        alignItems: "flex-end",
+        gap: rem(6),
+        marginBottom: rem(8)
+      }
+    }, /*#__PURE__*/React.createElement(PlanePicker, {
+      value: a.n,
+      onChange: name => pickAnchorPlane(a.id, name)
+    }), /*#__PURE__*/React.createElement("div", {
+      style: {
+        width: rem(46)
+      }
+    }, /*#__PURE__*/React.createElement(NumInput, {
+      label: "Qty",
+      value: a.qty,
+      onChange: v => updateAnchor(a.id, {
+        qty: v
+      }),
+      small: true,
+      placeholder: "1",
+      innerRef: refs.qty,
+      advanceRef: anchorAutoConfig ? undefined : refs.y
+    })), anchorAutoConfig ? /*#__PURE__*/React.createElement("div", {
+      style: {
+        flex: `0 0 ${rem(162)}`,
+        height: rem(34),
+        display: "flex",
+        alignItems: "center",
+        fontSize: rem(11),
+        color: "#5a7",
+        fontFamily: "'DM Mono', monospace",
+        letterSpacing: "0.04em"
+      }
+    }, "config chosen by tool") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+      style: {
+        width: rem(46)
+      }
+    }, /*#__PURE__*/React.createElement(NumInput, {
+      label: "Y",
+      value: a.y,
+      onChange: v => updateAnchor(a.id, {
+        y: v
+      }),
+      small: true,
+      placeholder: aCap ? String(aCap) : "all",
+      innerRef: refs.y,
+      advanceRef: refs.j
+    })), /*#__PURE__*/React.createElement("div", {
+      style: {
+        width: rem(46)
+      }
+    }, /*#__PURE__*/React.createElement(NumInput, {
+      label: "J",
+      value: a.j,
+      onChange: v => updateAnchor(a.id, {
+        j: v
+      }),
+      small: true,
+      placeholder: "0",
+      innerRef: refs.j,
+      advanceRef: refs.f
+    })), /*#__PURE__*/React.createElement("div", {
+      style: {
+        width: rem(46)
+      }
+    }, /*#__PURE__*/React.createElement(NumInput, {
+      label: "F",
+      value: a.f,
+      onChange: v => updateAnchor(a.id, {
+        f: v
+      }),
+      small: true,
+      placeholder: "0",
+      innerRef: refs.f
+    }))), /*#__PURE__*/React.createElement("button", {
+      onClick: () => removeAnchor(a.id),
+      title: "Remove",
+      style: {
+        background: "none",
+        border: "0.0625rem solid #a55",
+        borderRadius: rem(4),
+        color: "#a55",
+        padding: rem(0, 10),
+        fontSize: rem(16),
+        fontFamily: "'DM Mono', monospace",
+        cursor: "pointer",
+        height: rem(34),
+        lineHeight: 1
+      }
+    }, "\xD7"));
+  }), /*#__PURE__*/React.createElement("button", {
+    onClick: addAnchor,
+    style: {
+      background: "#1a2a1a",
+      border: "0.0625rem solid #2a4a2a",
+      borderRadius: rem(4),
+      color: "#5a7",
+      padding: rem(6, 12),
+      fontSize: rem(12),
+      fontFamily: "'DM Mono', monospace",
+      cursor: "pointer",
+      marginTop: rem(2)
+    }
+  }, "+ Add anchor"))), lockedA && /*#__PURE__*/React.createElement("div", {
     style: {
       marginBottom: rem(16)
     }
@@ -1640,7 +2604,7 @@ function FleetOptimizer() {
       color: "#555",
       marginTop: rem(3)
     }
-  }, fmt(lockedA.fleetCost), " fleet", lockedA.profit > 0 && lockedA.fleetCost > 0 ? ` · payback ${(lockedA.fleetCost / lockedA.profit).toFixed(1)}d` : ""), /*#__PURE__*/React.createElement("div", {
+  }, fmt(lockedA.fleetCost), " fleet", lockedA.payProfit > 0 && lockedA.fleetCost > 0 ? ` · payback ${(lockedA.fleetCost / lockedA.payProfit).toFixed(1)}d` : ""), /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: rem(8)
     }
@@ -1651,7 +2615,11 @@ function FleetOptimizer() {
       color: "#777",
       lineHeight: 1.8
     }
-  }, "\xD7", f.qty, " ", f.plane.n, " \u2014 ", /*#__PURE__*/React.createElement("span", {
+  }, "\xD7", f.qty, " ", f.plane.n, f.anchor ? /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: "#c86"
+    }
+  }, " (owned)") : "", " \u2014 ", /*#__PURE__*/React.createElement("span", {
     style: {
       color: "#7a7"
     }
@@ -1667,7 +2635,7 @@ function FleetOptimizer() {
     style: {
       color: "#555"
     }
-  }, " \xB7 ", f.rot, f.maxRot && f.rot < f.maxRot ? `/${f.maxRot}` : "", "/d \xB7 ", fmt(f.profitPerDay), "/day")))))), computing && /*#__PURE__*/React.createElement("div", {
+  }, " \xB7 ", f.redundant ? "redundant 0/d" : `${f.rot}${f.maxRot && f.rot < f.maxRot ? `/${f.maxRot}` : ""}/d`, " \xB7 ", f.profitPerDay < 0 ? "−" + fmt(-f.profitPerDay) : fmt(f.profitPerDay), "/day")))))), computing && /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
       padding: rem(20, 0),
@@ -1705,15 +2673,7 @@ function FleetOptimizer() {
       letterSpacing: "0.06em",
       marginBottom: rem(8)
     }
-  }, "Scenario B \u2014 pick one to compare"), s.horizon && /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: rem(10),
-      color: "#c86",
-      textTransform: "uppercase",
-      letterSpacing: "0.05em",
-      marginBottom: rem(8)
-    }
-  }, "Ranked by net profit @ ", fmtN(s.horizon), " days \u2014 fleets still in the hole at day ", fmtN(s.horizon), " are hidden"), /*#__PURE__*/React.createElement("div", {
+  }, "Scenario B \u2014 pick one to compare"), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "grid",
       gridTemplateColumns: "1fr 1fr",
@@ -1752,9 +2712,10 @@ function FleetOptimizer() {
     style: {
       fontSize: rem(10),
       color: "#5a7",
-      marginTop: rem(2)
+      marginTop: rem(2),
+      fontWeight: 700
     }
-  }, "net ", fmt(s.net), " @ ", fmtN(s.horizon), "d")), /*#__PURE__*/React.createElement("div", {
+  }, "Net ", fmt(s.net), " @ ", fmtN(s.horizon), "d")), /*#__PURE__*/React.createElement("div", {
     style: {
       background: "#1a1a1a",
       border: "0.0625rem solid #2a2a2a",
@@ -1768,20 +2729,26 @@ function FleetOptimizer() {
       textTransform: "uppercase",
       letterSpacing: "0.08em"
     }
-  }, "Fleet Cost"), /*#__PURE__*/React.createElement("div", {
+  }, "Fleet Cost", s.hasAnchors ? " (to buy)" : ""), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: rem(22),
       color: "#d4d4d4",
       fontWeight: 500,
       marginTop: rem(2)
     }
-  }, fmt(s.totalPurchase)), s.totalProfit > 0 && s.totalPurchase > 0 && /*#__PURE__*/React.createElement("div", {
+  }, fmt(s.totalPurchase)), s.complementProfit > 0 && s.totalPurchase > 0 && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: rem(10),
       color: "#5a7",
       marginTop: rem(2)
     }
-  }, "payback ", (s.totalPurchase / s.totalProfit).toFixed(1), " days"))), lockedA && activeComp && winnerCand && activeComp.id === winnerCand.id && /*#__PURE__*/React.createElement("div", {
+  }, "payback ", (s.totalPurchase / s.complementProfit).toFixed(1), " days"), s.hasAnchors && s.anchorPurchase > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: rem(10),
+      color: "#666",
+      marginTop: rem(2)
+    }
+  }, "+ ", fmt(s.anchorPurchase), " owned (sunk)"))), lockedA && activeComp && winnerCand && activeComp.id === winnerCand.id && /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: rem(-4),
       marginBottom: rem(14)
@@ -1939,7 +2906,8 @@ function FleetOptimizer() {
   }, h)))), /*#__PURE__*/React.createElement("tbody", null, result.fleet.map((f, i) => /*#__PURE__*/React.createElement("tr", {
     key: i,
     style: {
-      borderBottom: "0.0625rem solid #1e1e1e"
+      borderBottom: "0.0625rem solid #1e1e1e",
+      opacity: f.redundant ? 0.6 : 1
     }
   }, /*#__PURE__*/React.createElement("td", {
     style: {
@@ -1950,12 +2918,20 @@ function FleetOptimizer() {
       color: "#d4d4d4",
       fontWeight: 500
     }
-  }, f.plane.n), /*#__PURE__*/React.createElement("div", {
+  }, f.plane.n, f.anchor && /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: "#c86",
+      fontSize: rem(9),
+      marginLeft: rem(5),
+      textTransform: "uppercase",
+      letterSpacing: "0.05em"
+    }
+  }, "owned")), /*#__PURE__*/React.createElement("div", {
     style: {
       color: "#555",
       fontSize: rem(10)
     }
-  }, f.plane.m, " \xB7 ", fmt(f.plane["$"]), f.qty > 1 ? " ea" : "")), /*#__PURE__*/React.createElement("td", {
+  }, f.plane.m, f.anchor ? " · sunk cost" : ` · ${fmt(f.plane["$"])}${f.qty > 1 ? " ea" : ""}`)), /*#__PURE__*/React.createElement("td", {
     style: {
       padding: rem(8),
       color: "#aaa"
@@ -1986,16 +2962,20 @@ function FleetOptimizer() {
       padding: rem(8),
       color: "#888"
     }
-  }, f.rot, f.maxRot && f.rot < f.maxRot ? /*#__PURE__*/React.createElement("span", {
+  }, f.redundant ? /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: "#c86"
+    }
+  }, "redundant \xB7 0 flights/day") : /*#__PURE__*/React.createElement(React.Fragment, null, f.rot, f.maxRot && f.rot < f.maxRot ? /*#__PURE__*/React.createElement("span", {
     style: {
       color: "#555"
     }
-  }, "/", f.maxRot) : "", "/d"), /*#__PURE__*/React.createElement("td", {
+  }, "/", f.maxRot) : "", "/d")), /*#__PURE__*/React.createElement("td", {
     style: {
       padding: rem(8),
-      color: "#7c8"
+      color: f.profitPerDay < 0 ? "#c66" : "#7c8"
     }
-  }, fmt(f.profitPerDay)), /*#__PURE__*/React.createElement("td", {
+  }, f.profitPerDay < 0 ? "−" + fmt(-f.profitPerDay) : fmt(f.profitPerDay)), /*#__PURE__*/React.createElement("td", {
     style: {
       padding: rem(8),
       color: "#c66",
@@ -2013,7 +2993,7 @@ function FleetOptimizer() {
       letterSpacing: "0.05em",
       marginBottom: rem(4)
     }
-  }, "Runner-up fleets"), s.alternatives.map((alt, i) => /*#__PURE__*/React.createElement("div", {
+  }, s.horizon ? `Runner-up fleets ranked by net profit @ ${fmtN(s.horizon)} days` : "Runner-up fleets"), s.alternatives.map((alt, i) => /*#__PURE__*/React.createElement("div", {
     key: i,
     style: {
       borderBottom: "0.0625rem solid #1a1a1a"
@@ -2039,7 +3019,7 @@ function FleetOptimizer() {
     style: {
       color: "#555"
     }
-  }, altOpen === i ? "▾ " : "▸ "), alt.planes.map(p => `${p.qty}× ${p.n}`).join(" + "), /*#__PURE__*/React.createElement("span", {
+  }, altOpen === i ? "▾ " : "▸ "), alt.planes, /*#__PURE__*/React.createElement("span", {
     style: {
       color: "#7c8"
     }
@@ -2049,16 +3029,21 @@ function FleetOptimizer() {
     }
   }, " \xB7 ", fmt(alt.purchase), " fleet"), s.horizon && alt.net != null && /*#__PURE__*/React.createElement("span", {
     style: {
-      color: "#5a7"
+      color: "#5a7",
+      fontWeight: 700
     }
-  }, " \xB7 net ", fmt(alt.net), " @ ", fmtN(s.horizon), "d")), compBtn(altCands[i])), altOpen === i && alt.fleet.map((f, k) => /*#__PURE__*/React.createElement("div", {
+  }, " \xB7 Net ", fmt(alt.net), " @ ", fmtN(s.horizon), "d")), compBtn(altCands[i])), altOpen === i && alt.fleet.map((f, k) => /*#__PURE__*/React.createElement("div", {
     key: k,
     style: {
       fontSize: rem(11),
       color: "#777",
       padding: rem(0, 0, 6, 18)
     }
-  }, "\xD7", f.qty, " ", f.plane.n, " \u2014 ", /*#__PURE__*/React.createElement("span", {
+  }, "\xD7", f.qty, " ", f.plane.n, f.anchor ? /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: "#c86"
+    }
+  }, " (owned)") : "", " \u2014 ", /*#__PURE__*/React.createElement("span", {
     style: {
       color: "#7a7"
     }
@@ -2074,7 +3059,7 @@ function FleetOptimizer() {
     style: {
       color: "#555"
     }
-  }, " \xB7 ", f.rot, f.maxRot && f.rot < f.maxRot ? `/${f.maxRot}` : "", "/d \xB7 ", fmt(f.profitPerDay), "/day"))), lockedA && activeComp && activeComp.id === alt && /*#__PURE__*/React.createElement("div", {
+  }, " \xB7 ", f.redundant ? "redundant 0/d" : `${f.rot}${f.maxRot && f.rot < f.maxRot ? `/${f.maxRot}` : ""}/d`, " \xB7 ", f.profitPerDay < 0 ? "−" + fmt(-f.profitPerDay) : fmt(f.profitPerDay), "/day"))), lockedA && activeComp && activeComp.id === alt && /*#__PURE__*/React.createElement("div", {
     style: {
       paddingBottom: rem(8)
     }
@@ -2096,7 +3081,103 @@ function FleetOptimizer() {
       padding: rem(30),
       fontSize: rem(13)
     }
-  }, result.reason || "Enter a distance and demand to see the optimal fleet.")));
+  }, result.reason || "Enter a distance and demand to see the optimal fleet."), isRC && /*#__PURE__*/React.createElement("div", {
+    style: {
+      borderTop: "0.0625rem solid #2a2a2a",
+      marginTop: rem(24),
+      paddingTop: rem(12)
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    onClick: () => setDevOpen(!devOpen),
+    style: {
+      fontSize: rem(11),
+      color: "#666",
+      textTransform: "uppercase",
+      letterSpacing: "0.05em",
+      cursor: "pointer",
+      userSelect: "none",
+      padding: rem(4, 0)
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: "#555"
+    }
+  }, devOpen ? "▾ " : "▸ "), "Dev"), devOpen && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: rem(8)
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: rem(11),
+      color: "#777",
+      lineHeight: 1.6,
+      marginBottom: rem(10)
+    }
+  }, "Benchmark times a fixed scenario suite in the worker and reports the median on this device \u2014 real on-device numbers, no typing required."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: rem(10),
+      marginBottom: rem(10),
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: runBenchmark,
+    disabled: benchRunning,
+    style: {
+      background: benchRunning ? "#1a1a1a" : "none",
+      border: "0.0625rem solid #333",
+      borderRadius: rem(4),
+      color: benchRunning ? "#666" : "#5a7",
+      padding: rem(6, 12),
+      fontSize: rem(11),
+      cursor: benchRunning ? "default" : "pointer",
+      fontFamily: "'DM Mono', monospace",
+      textTransform: "uppercase",
+      letterSpacing: "0.05em"
+    }
+  }, benchRunning ? "Running…" : "Run benchmark"), benchDevice && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: rem(11),
+      color: "#666"
+    }
+  }, benchDevice)), benchResults && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: rem(11),
+      color: "#aaa"
+    }
+  }, benchResults.map((b, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    style: {
+      display: "grid",
+      gridTemplateColumns: `1fr ${rem(64)}`,
+      gap: rem(8),
+      padding: rem(5, 0),
+      borderBottom: "0.0625rem solid #1e1e1e"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      minWidth: 0
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: "#ccc"
+    }
+  }, b.label), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: "#666",
+      fontSize: rem(10),
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap"
+    }
+  }, b.fleet, b.pool ? ` · pool ${b.pool}` : "")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: "right",
+      alignSelf: "center",
+      color: b.ms > 2500 ? "#c86" : b.ms > 800 ? "#ca6" : "#5a7"
+    }
+  }, Math.round(b.ms), " ms"))))))));
 }
     ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(FleetOptimizer));
   </script>
