@@ -1072,13 +1072,20 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
     ryD = Math.max(0, _estRem.Y);
 
   // ── Step 1: Fleet selection ──
-  const hasBudget = mFp > 0;
+  const hasBudget = maxFleetPrice != null; // null = unlimited; 0 = "buy nothing" (complement blocked)
   const budget = hasBudget ? mFp : Infinity;
+  // When max-aircraft is set it caps the whole fleet (anchors + complement), so the complement
+  // gets the remaining slots. cMaxAc = 0 means no complement planes allowed (anchors-only).
+  const cMaxAc = mAc > 0 ? Math.max(0, mAc - anchorAC) : 0;
   let bestProfit = -Infinity;
   let rawFleet = [];
 
-  // Take top candidates: when budget-constrained, only consider affordable aircraft
-  const affordable = hasBudget ? planeData.filter(pd => pd.plane["$"] <= budget) : planeData;
+  // Take top candidates: when budget-constrained, only consider affordable aircraft.
+  // When Single Type (mAf=1) is set with anchors, the complement must be the same type as
+  // the anchor(s) so the whole fleet stays one type.
+  const anchorNames = hasAnchors ? new Set(anchorEntries.map(e => e.plane.n)) : null;
+  let affordable = hasBudget ? planeData.filter(pd => pd.plane["$"] <= budget) : planeData;
+  if (mAf === 1 && hasAnchors) affordable = affordable.filter(pd => anchorNames.has(pd.plane.n));
   // Candidate pool = the most cost-efficient planes (lowest operating cost per seat; these win
   // on daily profit and at long horizons) UNION the cheapest qualifying planes (lowest purchase
   // price; these win net at short horizons, where capital cost dominates and a cheaper plane
@@ -1103,8 +1110,12 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
     top.push(pd);
   }
   if (top.length === 0) {
-    const cheapest = Math.min(...planeData.map(pd => pd.plane["$"]));
-    return fail(`Fleet budget ${fmt(budget)} is below the cheapest qualifying aircraft (${fmt(cheapest)})`);
+    // With anchors, no complement candidates is fine — anchors-only is a valid fleet.
+    // Without anchors, report the budget shortfall.
+    if (!hasAnchors) {
+      const cheapest = Math.min(...planeData.map(pd => pd.plane["$"]));
+      return fail(`Fleet budget ${fmt(budget)} is below the cheapest qualifying aircraft (${fmt(cheapest)})`);
+    }
   }
 
   // Track runner-up fleets for display
@@ -1150,7 +1161,7 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
   // Single-type fleets
   for (const a of top) {
     let maxQ = Math.min(hasBudget ? Math.floor(budget / a.plane["$"]) : 20, 20);
-    if (mAc > 0) maxQ = Math.min(maxQ, mAc);
+    if (mAc > 0) maxQ = Math.min(maxQ, cMaxAc);
     let prevProfit = -Infinity;
     for (let q = 1; q <= maxQ; q++) {
       const {
@@ -1183,11 +1194,11 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
         const a = top[i],
           b = top[j];
         let maxQA = Math.min(hasBudget ? Math.floor(budget / a.plane["$"]) : 10, 10);
-        if (mAc > 0) maxQA = Math.min(maxQA, mAc - 1);
+        if (mAc > 0) maxQA = Math.min(maxQA, cMaxAc - 1);
         for (let qA = 1; qA <= maxQA; qA++) {
           const remBudget = hasBudget ? budget - qA * a.plane["$"] : Infinity;
           let maxQB = Math.min(hasBudget ? Math.floor(remBudget / b.plane["$"]) : 10, 10);
-          if (mAc > 0) maxQB = Math.min(maxQB, mAc - qA);
+          if (mAc > 0) maxQB = Math.min(maxQB, cMaxAc - qA);
           for (let qB = 1; qB <= maxQB; qB++) {
             const result = evalFleet([{
               ...a,
@@ -1827,7 +1838,7 @@ function FleetOptimizer() {
     jD = Math.floor(n(jDem) * r / 100),
     fD = Math.floor(n(fDem) * r / 100);
   const advCount = [fuelKPrice !== 700, co2Quota !== 120, maxRunway != null, maxPlanePrice != null, maxFleetPrice != null, minAircraft != null, maxAircraft != null, maxAirframes != null, horizon != null].filter(Boolean).length;
-  const VERSION = "v0.6.5-rc.11";
+  const VERSION = "v0.6.5-rc.12";
   const isRC = /-rc/.test(VERSION); // dev tooling (compute readout + benchmark) shows only in RC builds
 
   // ── Dev benchmark (RC only): time a fixed scenario suite in the worker, off the UI thread,
