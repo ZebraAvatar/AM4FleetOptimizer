@@ -247,7 +247,7 @@ function MfrFilter({
       textAlign: "left",
       whiteSpace: "nowrap"
     }
-  }, count > 0 ? `${MFRS.length - count}/${MFRS.length}` : "All", " \u25BE"), open && /*#__PURE__*/React.createElement("div", {
+  }, count > 0 ? `${MFRS.length - count}/${MFRS.length}` : "All", " ▾"), open && /*#__PURE__*/React.createElement("div", {
     style: {
       position: "absolute",
       top: "100%",
@@ -295,7 +295,7 @@ function MfrFilter({
     ref: searchRef,
     type: "text",
     value: query,
-    placeholder: "Search\u2026",
+    placeholder: "Search…",
     onChange: e => setQuery(e.target.value),
     onKeyDown: e => {
       if (e.key === "Enter" && shown.length > 0) {
@@ -395,7 +395,7 @@ function PlanePicker({
       textOverflow: "ellipsis",
       boxSizing: "border-box"
     }
-  }, value || "Select aircraft", " \u25BE"), open && /*#__PURE__*/React.createElement("div", {
+  }, value || "Select aircraft", " ▾"), open && /*#__PURE__*/React.createElement("div", {
     style: {
       position: "absolute",
       top: "100%",
@@ -422,7 +422,7 @@ function PlanePicker({
     ref: searchRef,
     type: "text",
     value: query,
-    placeholder: "Search name or maker\u2026",
+    placeholder: "Search name or maker…",
     onChange: e => setQuery(e.target.value),
     onKeyDown: e => {
       if (e.key === "Enter" && shown.length > 0) {
@@ -475,7 +475,7 @@ function PlanePicker({
       color: "#555",
       flexShrink: 0
     }
-  }, p.m, " \xB7 ", p.p, "p")))));
+  }, p.m, " · ", p.p, "p")))));
 }
 
 // ── Fleet optimizer core ────────────────────────────────────────────────────
@@ -535,7 +535,7 @@ function CompPanel({
     style: {
       color: "#999"
     }
-  }, fmt(a.profit), "/day \xB7 ", fmt(a.fleetCost)), /*#__PURE__*/React.createElement("span", {
+  }, fmt(a.profit), "/day · ", fmt(a.fleetCost)), /*#__PURE__*/React.createElement("span", {
     style: {
       color: "#5a7",
       fontWeight: 500
@@ -548,7 +548,7 @@ function CompPanel({
     style: {
       color: "#999"
     }
-  }, fmt(b.profit), "/day \xB7 ", fmt(b.fleetCost))), /*#__PURE__*/React.createElement("div", {
+  }, fmt(b.profit), "/day · ", fmt(b.fleetCost))), /*#__PURE__*/React.createElement("div", {
     style: {
       borderTop: "0.0625rem solid #1a2a1a",
       paddingTop: rem(10),
@@ -559,7 +559,7 @@ function CompPanel({
     style: {
       color: "#555"
     }
-  }, "Same result \u2014 change inputs before comparing."), !same && bDom && /*#__PURE__*/React.createElement("span", {
+  }, "Same result — change inputs before comparing."), !same && bDom && /*#__PURE__*/React.createElement("span", {
     style: {
       color: "#7c8"
     }
@@ -622,7 +622,7 @@ function CompPanel({
         color: "#3a5a3a",
         marginTop: rem(6)
       }
-    }, fmt(Math.abs(cDiff)), " \xF7 ", fmt(Math.abs(pDiff)), "/day = ", cross.toFixed(1), " days"));
+    }, fmt(Math.abs(cDiff)), " ÷ ", fmt(Math.abs(pDiff)), "/day = ", cross.toFixed(1), " days"));
   })()));
 }
 function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers, horizon, anchors, anchorAutoConfig, minAircraft) {
@@ -1240,6 +1240,51 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
   // (Allocation helpers tmr/cfgForF/bestF/bestFFixed/pushType and the anchor pass are
   // defined above Step 1 so the complement search can use the post-anchor residual.)
 
+  // Single Type + auto-config: the tool controls every seat layout, so a one-type fleet
+  // (owned anchors + the complement it buys) must share ONE config. Anchors are sized
+  // against full demand and placed first, the complement against the residual, so without
+  // this they diverge — exactly the split a user sees after ticking "Single Type". Re-derive
+  // one config for the type's total daily flights against full demand and apply it to every
+  // row (owned and bought), recomputing each row's served seats / economics against the
+  // depleting demand pool. Only fires when the whole fleet is genuinely one type; fixed-config
+  // anchors (auto off) are left untouched, since there the user has pinned the layout on purpose.
+  const unifyAutoConfig = fleet => {
+    if (new Set(fleet.map(f => f.plane.n)).size !== 1) return null; // not a single-type fleet
+    const T = fleet[0].plane,
+      cpf = anchorEntries[0].fixedCPF,
+      co2 = anchorEntries[0].co2PP;
+    const Ftot = fleet.reduce((s, f) => s + f.qty * f.rot, 0);
+    if (Ftot <= 0) return null; // nobody flies — nothing to unify
+    const c = cfgForF(T, cpf, co2, Ftot, fD, jD, yD); // one optimal config for the group's flights
+    let pF = fD,
+      pJ = jD,
+      pY = yD;
+    for (const f of fleet) {
+      f.fSeats = c.fs;
+      f.jSeats = c.js;
+      f.ySeats = c.ys;
+      const F = f.qty * f.rot;
+      if (F <= 0) {
+        f.profitPerDay = 0;
+        f.revenuePerDay = 0;
+        f.costPerDay = 0;
+        continue;
+      }
+      const rc = cfgFixedAt(cpf, co2, c.fs, c.js, c.ys, F, pF, pJ, pY);
+      pF -= rc.sF;
+      pJ -= rc.sJ;
+      pY -= rc.sY;
+      f.profitPerDay = rc.profit;
+      f.revenuePerDay = rc.rev;
+      f.costPerDay = rc.cost;
+    }
+    return {
+      remF: pF,
+      remJ: pJ,
+      remY: pY
+    };
+  };
+
   // Allocate a fleet (winner or runner-up) into concrete configs & flight counts. Owned
   // anchors are always included first (forced; user-fixed count never consolidated away),
   // then the complement entries fill the residual demand.
@@ -1385,6 +1430,15 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
         remF -= b.sF;
         remJ -= b.sJ;
         remY -= b.sY;
+      }
+    }
+    // Single Type + auto-config: collapse the one-type fleet onto a single shared layout.
+    if (mAf === 1 && hasAnchors && anchorAutoConfig) {
+      const u = unifyAutoConfig(fleet);
+      if (u) {
+        remF = u.remF;
+        remJ = u.remJ;
+        remY = u.remY;
       }
     }
     return {
@@ -1838,7 +1892,7 @@ function FleetOptimizer() {
     jD = Math.floor(n(jDem) * r / 100),
     fD = Math.floor(n(fDem) * r / 100);
   const advCount = [fuelKPrice !== 700, co2Quota !== 120, maxRunway != null, maxPlanePrice != null, maxFleetPrice != null, minAircraft != null, maxAircraft != null, maxAirframes != null, horizon != null].filter(Boolean).length;
-  const VERSION = "v0.6.5";
+  const VERSION = "v0.6.6-rc.1";
   const isRC = /-rc/.test(VERSION); // dev tooling (compute readout + benchmark) shows only in RC builds
 
   // ── Dev benchmark (RC only): time a fixed scenario suite in the worker, off the UI thread,
@@ -2064,7 +2118,7 @@ function FleetOptimizer() {
     style: {
       color: "#4a6"
     }
-  }, " \xB7 ", Math.round(computeMs), " ms") : null)), /*#__PURE__*/React.createElement("button", {
+  }, " · ", Math.round(computeMs), " ms") : null)), /*#__PURE__*/React.createElement("button", {
     onClick: resetAll,
     style: {
       background: "none",
@@ -2311,7 +2365,7 @@ function FleetOptimizer() {
     style: {
       color: "#c86"
     }
-  }, " \xB7 ", advCount, " set")), advOpen && /*#__PURE__*/React.createElement("div", {
+  }, " · ", advCount, " set")), advOpen && /*#__PURE__*/React.createElement("div", {
     style: {
       display: "grid",
       gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${rem(130)}), 1fr))`,
@@ -2323,7 +2377,7 @@ function FleetOptimizer() {
     value: fuelKPrice,
     onChange: setFuelKPrice
   }), /*#__PURE__*/React.createElement(NumInput, {
-    label: "CO\u2082 ($/quota)",
+    label: "CO₂ ($/quota)",
     value: co2Quota,
     onChange: setCo2Quota
   }), /*#__PURE__*/React.createElement(NumInput, {
@@ -2384,7 +2438,7 @@ function FleetOptimizer() {
     style: {
       color: "#c86"
     }
-  }, " \xB7 ", validAnchors.length, " owned")), anchorOpen && /*#__PURE__*/React.createElement("div", {
+  }, " · ", validAnchors.length, " owned")), anchorOpen && /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: rem(6)
     }
@@ -2395,7 +2449,7 @@ function FleetOptimizer() {
       lineHeight: 1.6,
       marginBottom: rem(10)
     }
-  }, "Force planes you already own into the fleet; the rest is optimized around them. Owned planes are a sunk cost \u2014 they add to profit (and can run an operating loss), but never to spend. They're exempt from the aircraft limits and are never sold off."), /*#__PURE__*/React.createElement("label", {
+  }, "Force planes you already own into the fleet; the rest is optimized around them. Owned planes are a sunk cost — they add to profit (and can run an operating loss), but never to spend. They're exempt from the aircraft limits and are never sold off."), /*#__PURE__*/React.createElement("label", {
     style: {
       display: "flex",
       alignItems: "center",
@@ -2526,7 +2580,7 @@ function FleetOptimizer() {
         height: rem(34),
         lineHeight: 1
       }
-    }, "\xD7"));
+    }, "×"));
   }), /*#__PURE__*/React.createElement("button", {
     onClick: addAnchor,
     style: {
@@ -2558,7 +2612,7 @@ function FleetOptimizer() {
       textTransform: "uppercase",
       letterSpacing: "0.06em"
     }
-  }, "Scenario A \u2014 locked"), /*#__PURE__*/React.createElement("button", {
+  }, "Scenario A — locked"), /*#__PURE__*/React.createElement("button", {
     onClick: clearA,
     style: {
       background: "none",
@@ -2615,11 +2669,11 @@ function FleetOptimizer() {
       color: "#777",
       lineHeight: 1.8
     }
-  }, "\xD7", f.qty, " ", f.plane.n, f.anchor ? /*#__PURE__*/React.createElement("span", {
+  }, "×", f.qty, " ", f.plane.n, f.anchor ? /*#__PURE__*/React.createElement("span", {
     style: {
       color: "#c86"
     }
-  }, " (owned)") : "", " \u2014 ", /*#__PURE__*/React.createElement("span", {
+  }, " (owned)") : "", " — ", /*#__PURE__*/React.createElement("span", {
     style: {
       color: "#7a7"
     }
@@ -2635,7 +2689,7 @@ function FleetOptimizer() {
     style: {
       color: "#555"
     }
-  }, " \xB7 ", f.redundant ? "redundant 0/d" : `${f.rot}${f.maxRot && f.rot < f.maxRot ? `/${f.maxRot}` : ""}/d`, " \xB7 ", f.profitPerDay < 0 ? "−" + fmt(-f.profitPerDay) : fmt(f.profitPerDay), "/day")))))), computing && /*#__PURE__*/React.createElement("div", {
+  }, " · ", f.redundant ? "redundant 0/d" : `${f.rot}${f.maxRot && f.rot < f.maxRot ? `/${f.maxRot}` : ""}/d`, " · ", f.profitPerDay < 0 ? "−" + fmt(-f.profitPerDay) : fmt(f.profitPerDay), "/day")))))), computing && /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
       padding: rem(20, 0),
@@ -2673,7 +2727,7 @@ function FleetOptimizer() {
       letterSpacing: "0.06em",
       marginBottom: rem(8)
     }
-  }, "Scenario B \u2014 pick one to compare"), /*#__PURE__*/React.createElement("div", {
+  }, "Scenario B — pick one to compare"), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "grid",
       gridTemplateColumns: "1fr 1fr",
@@ -2878,7 +2932,7 @@ function FleetOptimizer() {
       color: "#555",
       marginBottom: rem(14)
     }
-  }, "Tickets: Y=", fmt(s.yPrice), " \xB7 J=", fmt(s.jPrice), " \xB7 F=", fmt(s.fPrice), /*#__PURE__*/React.createElement("br", null), "Capacity needed: ", fmtN(s.totalCapNeeded), " units/day (", fmtN(yD), "\xD71 + ", fmtN(jD), "\xD72 + ", fmtN(fD), "\xD73)"), result.fleet.length > 0 && /*#__PURE__*/React.createElement("div", {
+  }, "Tickets: Y=", fmt(s.yPrice), " · J=", fmt(s.jPrice), " · F=", fmt(s.fPrice), /*#__PURE__*/React.createElement("br", null), "Capacity needed: ", fmtN(s.totalCapNeeded), " units/day (", fmtN(yD), "×1 + ", fmtN(jD), "×2 + ", fmtN(fD), "×3)"), result.fleet.length > 0 && /*#__PURE__*/React.createElement("div", {
     style: {
       overflowX: "auto"
     }
@@ -2936,7 +2990,7 @@ function FleetOptimizer() {
       padding: rem(8),
       color: "#aaa"
     }
-  }, "\xD7", f.qty), /*#__PURE__*/React.createElement("td", {
+  }, "×", f.qty), /*#__PURE__*/React.createElement("td", {
     style: {
       padding: rem(8)
     }
@@ -2966,7 +3020,7 @@ function FleetOptimizer() {
     style: {
       color: "#c86"
     }
-  }, "redundant \xB7 0 flights/day") : /*#__PURE__*/React.createElement(React.Fragment, null, f.rot, f.maxRot && f.rot < f.maxRot ? /*#__PURE__*/React.createElement("span", {
+  }, "redundant · 0 flights/day") : /*#__PURE__*/React.createElement(React.Fragment, null, f.rot, f.maxRot && f.rot < f.maxRot ? /*#__PURE__*/React.createElement("span", {
     style: {
       color: "#555"
     }
@@ -3027,23 +3081,23 @@ function FleetOptimizer() {
     style: {
       color: "#555"
     }
-  }, " \xB7 ", fmt(alt.purchase), " fleet"), s.horizon && alt.net != null && /*#__PURE__*/React.createElement("span", {
+  }, " · ", fmt(alt.purchase), " fleet"), s.horizon && alt.net != null && /*#__PURE__*/React.createElement("span", {
     style: {
       color: "#5a7",
       fontWeight: 700
     }
-  }, " \xB7 Net ", fmt(alt.net), " @ ", fmtN(s.horizon), "d")), compBtn(altCands[i])), altOpen === i && alt.fleet.map((f, k) => /*#__PURE__*/React.createElement("div", {
+  }, " · Net ", fmt(alt.net), " @ ", fmtN(s.horizon), "d")), compBtn(altCands[i])), altOpen === i && alt.fleet.map((f, k) => /*#__PURE__*/React.createElement("div", {
     key: k,
     style: {
       fontSize: rem(11),
       color: "#777",
       padding: rem(0, 0, 6, 18)
     }
-  }, "\xD7", f.qty, " ", f.plane.n, f.anchor ? /*#__PURE__*/React.createElement("span", {
+  }, "×", f.qty, " ", f.plane.n, f.anchor ? /*#__PURE__*/React.createElement("span", {
     style: {
       color: "#c86"
     }
-  }, " (owned)") : "", " \u2014 ", /*#__PURE__*/React.createElement("span", {
+  }, " (owned)") : "", " — ", /*#__PURE__*/React.createElement("span", {
     style: {
       color: "#7a7"
     }
@@ -3059,7 +3113,7 @@ function FleetOptimizer() {
     style: {
       color: "#555"
     }
-  }, " \xB7 ", f.redundant ? "redundant 0/d" : `${f.rot}${f.maxRot && f.rot < f.maxRot ? `/${f.maxRot}` : ""}/d`, " \xB7 ", f.profitPerDay < 0 ? "−" + fmt(-f.profitPerDay) : fmt(f.profitPerDay), "/day"))), lockedA && activeComp && activeComp.id === alt && /*#__PURE__*/React.createElement("div", {
+  }, " · ", f.redundant ? "redundant 0/d" : `${f.rot}${f.maxRot && f.rot < f.maxRot ? `/${f.maxRot}` : ""}/d`, " · ", f.profitPerDay < 0 ? "−" + fmt(-f.profitPerDay) : fmt(f.profitPerDay), "/day"))), lockedA && activeComp && activeComp.id === alt && /*#__PURE__*/React.createElement("div", {
     style: {
       paddingBottom: rem(8)
     }
@@ -3113,7 +3167,7 @@ function FleetOptimizer() {
       lineHeight: 1.6,
       marginBottom: rem(10)
     }
-  }, "Benchmark times a fixed scenario suite in the worker and reports the median on this device \u2014 real on-device numbers, no typing required."), /*#__PURE__*/React.createElement("div", {
+  }, "Benchmark times a fixed scenario suite in the worker and reports the median on this device — real on-device numbers, no typing required."), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       alignItems: "center",
