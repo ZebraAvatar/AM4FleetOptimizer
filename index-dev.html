@@ -1733,7 +1733,7 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
 function createOptimizerWorker() {
   if (typeof Worker === "undefined" || typeof URL === "undefined") return null;
   try {
-    const src = ["const P=" + JSON.stringify(P) + ";", "const PRICING=" + JSON.stringify(PRICING) + ";", "const MARKUP=" + JSON.stringify(MARKUP) + ";", "const n=" + n.toString() + ";", fmt.toString(), fmtN.toString(), optimizeFleet.toString(), "function _run(p){p=p.slice();p[12]=new Set(p[12]);return optimizeFleet.apply(null,p);}", "self.onmessage=function(e){var d=e.data;" + "if(d.bench){var out=[];for(var i=0;i<d.suite.length;i++){var sc=d.suite[i];_run(sc.params);" +
+    const src = ["const P=" + JSON.stringify(P) + ";", "const PRICING=" + JSON.stringify(PRICING) + ";", "const MARKUP=" + JSON.stringify(MARKUP) + ";", "const n=" + n.toString() + ";", "const fmt=" + fmt.toString() + ";", "const fmtN=" + fmtN.toString() + ";", optimizeFleet.toString(), "function _run(p){p=p.slice();p[12]=new Set(p[12]);return optimizeFleet.apply(null,p);}", "self.onmessage=function(e){var d=e.data;" + "if(d.bench){var out=[];for(var i=0;i<d.suite.length;i++){var sc=d.suite[i];_run(sc.params);" +
     // warmup
     "var ts=[],rr=null;for(var k=0;k<d.iters;k++){var t0=performance.now();rr=_run(sc.params);ts.push(performance.now()-t0);}" + "ts.sort(function(a,b){return a-b;});var med=ts[Math.floor(ts.length/2)];" + "var fl=rr&&rr.fleet?rr.fleet.map(function(f){return f.qty+'x '+f.plane.n;}).join(' + '):'';" + "out.push({label:sc.label,ms:med,pool:rr&&rr.summary&&rr.summary._pool||0,fleet:fl||(rr&&rr.error)||'—',aircraft:rr&&rr.summary?rr.summary.totalAircraft:0});}" + "self.postMessage({bench:true,results:out});" + "}else{var t0=performance.now();var result=_run(d.params);var computeMs=performance.now()-t0;" + "self.postMessage({gen:d.gen,result:result,computeMs:computeMs});}};"].join("\n");
     return new Worker(URL.createObjectURL(new Blob([src], {
@@ -1832,9 +1832,11 @@ function FleetOptimizer() {
   }); // leave config blank; empty Y => all-economy
   const validAnchors = anchors.filter(a => a.n && (a.qty == null || n(a.qty) > 0));
   useEffect(() => {
-    const w = createOptimizerWorker();
-    workerRef.current = w;
-    if (w) {
+    // Wire a worker's handlers. onerror is a safety net: if a compute ever throws inside the
+    // worker, don't leave the UI stuck on "computing…" with a now-dead worker — surface a
+    // message, clear the in-flight flags, and respawn so subsequent runs still work.
+    const wire = w => {
+      if (!w) return w;
       w.onmessage = e => {
         if (e.data.bench) {
           setBenchResults(e.data.results);
@@ -1850,9 +1852,26 @@ function FleetOptimizer() {
           setActiveComp(null);
         }
       };
-    }
+      w.onerror = ev => {
+        if (ev && ev.preventDefault) ev.preventDefault();
+        setComputing(false);
+        setPending(false);
+        setBenchRunning(false);
+        setResult({
+          fleet: [],
+          summary: null,
+          reason: "Something went wrong computing this fleet — adjust an input and try again."
+        });
+        try {
+          w.terminate();
+        } catch (_) {}
+        workerRef.current = wire(createOptimizerWorker());
+      };
+      return w;
+    };
+    workerRef.current = wire(createOptimizerWorker());
     return () => {
-      if (w) w.terminate();
+      if (workerRef.current) workerRef.current.terminate();
     };
   }, []);
   useEffect(() => {
@@ -1892,7 +1911,7 @@ function FleetOptimizer() {
     jD = Math.floor(n(jDem) * r / 100),
     fD = Math.floor(n(fDem) * r / 100);
   const advCount = [fuelKPrice !== 700, co2Quota !== 120, maxRunway != null, maxPlanePrice != null, maxFleetPrice != null, minAircraft != null, maxAircraft != null, maxAirframes != null, horizon != null].filter(Boolean).length;
-  const VERSION = "v0.6.6-rc.1";
+  const VERSION = "v0.6.6-rc.2";
   const isRC = /-rc/.test(VERSION); // dev tooling (compute readout + benchmark) shows only in RC builds
 
   // ── Dev benchmark (RC only): time a fixed scenario suite in the worker, off the UI thread,
