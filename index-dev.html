@@ -47,6 +47,11 @@ const fmt = n => {
   return `$${Math.round(n)}`;
 };
 const fmtN = n => n.toLocaleString();
+// Ticket prices: show the exact whole-dollar fare the game would set, not fmt()'s K/M
+// abbreviation. AM4's own autoprice rounds down to the dollar (see AM4Utilities-Lite.html:
+// Math.floor(y*1.1) / Math.floor(j*1.08) / Math.floor(f*1.06)) — yP/jP/fP below already
+// include the markup, so a plain floor matches the game exactly.
+const fmtPrice = n => `$${Math.floor(n)}`;
 // px-equivalent values expressed in rem so the UI scales with root font size
 const rem = (...v) => v.map(x => x === 0 ? "0" : `${x / 16}rem`).join(" ");
 const MFRS = [...new Set(P.map(p => p.m))].sort();
@@ -1911,7 +1916,7 @@ function FleetOptimizer() {
     jD = Math.floor(n(jDem) * r / 100),
     fD = Math.floor(n(fDem) * r / 100);
   const advCount = [fuelKPrice !== 700, co2Quota !== 120, maxRunway != null, maxPlanePrice != null, maxFleetPrice != null, minAircraft != null, maxAircraft != null, maxAirframes != null, horizon != null].filter(Boolean).length;
-  const VERSION = "v0.6.6-rc.2";
+  const VERSION = "v0.6.6-rc.2.1";
   const isRC = /-rc/.test(VERSION); // dev tooling (compute readout + benchmark) shows only in RC builds
 
   // ── Dev benchmark (RC only): time a fixed scenario suite in the worker, off the UI thread,
@@ -2951,7 +2956,7 @@ function FleetOptimizer() {
       color: "#555",
       marginBottom: rem(14)
     }
-  }, "Tickets: Y=", fmt(s.yPrice), " · J=", fmt(s.jPrice), " · F=", fmt(s.fPrice), /*#__PURE__*/React.createElement("br", null), "Capacity needed: ", fmtN(s.totalCapNeeded), " units/day (", fmtN(yD), "×1 + ", fmtN(jD), "×2 + ", fmtN(fD), "×3)"), result.fleet.length > 0 && /*#__PURE__*/React.createElement("div", {
+  }, "Tickets: Y=", fmtPrice(s.yPrice), " · J=", fmtPrice(s.jPrice), " · F=", fmtPrice(s.fPrice), /*#__PURE__*/React.createElement("br", null), "Capacity needed: ", fmtN(s.totalCapNeeded), " units/day (", fmtN(yD), "×1 + ", fmtN(jD), "×2 + ", fmtN(fD), "×3)"), result.fleet.length > 0 && /*#__PURE__*/React.createElement("div", {
     style: {
       overflowX: "auto"
     }
