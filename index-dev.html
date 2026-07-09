@@ -1748,29 +1748,50 @@ function createOptimizerWorker() {
     return null;
   }
 }
+
+// ── Input persistence ────────────────────────────────────────────────────────
+// Inputs are saved to the browser's on-device localStorage so a tab reload (or a
+// mobile tab discard) restores the session. Key is namespaced because every tool on
+// zebraavatar.github.io shares one localStorage origin. All access is try/catch-guarded:
+// private-browsing modes and blocked-storage settings can throw on read OR write.
+const INPUT_STORE_KEY = "am4fleet:inputs";
+const loadSavedInputs = () => {
+  try {
+    const s = JSON.parse(localStorage.getItem(INPUT_STORE_KEY));
+    return s && typeof s === "object" ? s : {};
+  } catch (_) {
+    return {};
+  }
+};
+const saveInputs = snap => {
+  try {
+    localStorage.setItem(INPUT_STORE_KEY, JSON.stringify(snap));
+  } catch (_) {}
+};
 function FleetOptimizer() {
-  const [dist, setDist] = useState(null);
-  const [mode, setMode] = useState("easy");
-  const [fuelKPrice, setFuelKPrice] = useState(700);
-  const [co2Quota, setCo2Quota] = useState(120);
-  const [opHrs, setOpHrs] = useState(24);
-  const [yDem, setYDem] = useState(null);
-  const [jDem, setJDem] = useState(null);
-  const [fDem, setFDem] = useState(null);
-  const [maxRunway, setMaxRunway] = useState(null);
-  const [maxPlanePrice, setMaxPlanePrice] = useState(null);
-  const [maxFleetPrice, setMaxFleetPrice] = useState(null);
-  const [rep, setRep] = useState(null);
-  const [excludedMfrs, setExcludedMfrs] = useState(new Set());
-  const [maxAircraft, setMaxAircraft] = useState(null);
-  const [maxAirframes, setMaxAirframes] = useState(null);
-  const [minAircraft, setMinAircraft] = useState(null);
-  const [equalize, setEqualize] = useState(false);
-  const [stopovers, setStopover] = useState(false);
-  const [horizon, setHorizon] = useState(null);
-  const [anchors, setAnchors] = useState([]); // [{ id, n, qty, f, j, y }]
-  const [anchorAutoConfig, setAnchorAutoConfig] = useState(false);
-  const [anchorOpen, setAnchorOpen] = useState(false);
+  const [saved] = useState(loadSavedInputs); // parsed once per mount
+  const [dist, setDist] = useState(saved.dist ?? null);
+  const [mode, setMode] = useState(saved.mode ?? "easy");
+  const [fuelKPrice, setFuelKPrice] = useState(saved.fuelKPrice ?? 700);
+  const [co2Quota, setCo2Quota] = useState(saved.co2Quota ?? 120);
+  const [opHrs, setOpHrs] = useState(saved.opHrs ?? 24);
+  const [yDem, setYDem] = useState(saved.yDem ?? null);
+  const [jDem, setJDem] = useState(saved.jDem ?? null);
+  const [fDem, setFDem] = useState(saved.fDem ?? null);
+  const [maxRunway, setMaxRunway] = useState(saved.maxRunway ?? null);
+  const [maxPlanePrice, setMaxPlanePrice] = useState(saved.maxPlanePrice ?? null);
+  const [maxFleetPrice, setMaxFleetPrice] = useState(saved.maxFleetPrice ?? null);
+  const [rep, setRep] = useState(saved.rep ?? null);
+  const [excludedMfrs, setExcludedMfrs] = useState(() => new Set(Array.isArray(saved.excludedMfrs) ? saved.excludedMfrs : []));
+  const [maxAircraft, setMaxAircraft] = useState(saved.maxAircraft ?? null);
+  const [maxAirframes, setMaxAirframes] = useState(saved.maxAirframes ?? null);
+  const [minAircraft, setMinAircraft] = useState(saved.minAircraft ?? null);
+  const [equalize, setEqualize] = useState(saved.equalize ?? false);
+  const [stopovers, setStopover] = useState(saved.stopovers ?? false);
+  const [horizon, setHorizon] = useState(saved.horizon ?? null);
+  const [anchors, setAnchors] = useState(Array.isArray(saved.anchors) ? saved.anchors : []); // [{ id, n, qty, f, j, y }]
+  const [anchorAutoConfig, setAnchorAutoConfig] = useState(saved.anchorAutoConfig ?? false);
+  const [anchorOpen, setAnchorOpen] = useState(Array.isArray(saved.anchors) && saved.anchors.length > 0); // restored anchors must be visible
   const [advOpen, setAdvOpen] = useState(false);
   const [computing, setComputing] = useState(false);
   const workerRef = useRef(null);
@@ -1817,6 +1838,34 @@ function FleetOptimizer() {
     setAnchors([]);
     setAnchorAutoConfig(false);
   };
+
+  // Persist every input change (resetAll included — it writes the cleared state).
+  useEffect(() => {
+    saveInputs({
+      v: 1,
+      dist,
+      mode,
+      fuelKPrice,
+      co2Quota,
+      opHrs,
+      yDem,
+      jDem,
+      fDem,
+      maxRunway,
+      maxPlanePrice,
+      maxFleetPrice,
+      rep,
+      excludedMfrs: [...excludedMfrs],
+      maxAircraft,
+      maxAirframes,
+      minAircraft,
+      equalize,
+      stopovers,
+      horizon,
+      anchors,
+      anchorAutoConfig
+    });
+  }, [dist, mode, fuelKPrice, co2Quota, opHrs, yDem, jDem, fDem, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, minAircraft, equalize, stopovers, horizon, anchors, anchorAutoConfig]);
 
   // ── Anchor list helpers ──
   const addAnchor = () => setAnchors(as => [...as, {
@@ -1916,7 +1965,7 @@ function FleetOptimizer() {
     jD = Math.floor(n(jDem) * r / 100),
     fD = Math.floor(n(fDem) * r / 100);
   const advCount = [fuelKPrice !== 700, co2Quota !== 120, maxRunway != null, maxPlanePrice != null, maxFleetPrice != null, minAircraft != null, maxAircraft != null, maxAirframes != null, horizon != null].filter(Boolean).length;
-  const VERSION = "v0.6.6-rc.2.1";
+  const VERSION = "v0.6.6-rc.3";
   const isRC = /-rc/.test(VERSION); // dev tooling (compute readout + benchmark) shows only in RC builds
 
   // ── Dev benchmark (RC only): time a fixed scenario suite in the worker, off the UI thread,
