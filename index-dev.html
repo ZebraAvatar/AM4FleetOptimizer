@@ -754,114 +754,10 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
   }).filter(Boolean).sort((a, b) => a.costPerCap - b.costPerCap);
   if (planeData.length === 0 && !hasAnchors) return fail("Set Op Hrs/Day above 0");
 
-  // ── Per-aircraft profit evaluator ──
-  // evalOneAt: evaluate at exactly f flights
-  const evalOneAt = (pd, rF, rJ, rY, f) => {
-    const fs = Math.min(Math.floor(pd.plane.p / 3), rF > 0 ? Math.ceil(rF / f) : 0);
-    const cF = pd.plane.p - 3 * fs;
-    const js = Math.min(Math.floor(cF / 2), rJ > 0 ? Math.ceil(rJ / f) : 0);
-    const cJ = cF - 2 * js;
-    const ys = Math.min(cJ, rY > 0 ? Math.ceil(rY / f) : 0);
-    if (fs + js + ys === 0) return null;
-    const sF = Math.min(fs * f, rF),
-      sJ = Math.min(js * f, rJ),
-      sY = Math.min(ys * f, rY);
-    const revenue = sF * fP + sJ * jP + sY * yP;
-    const cost = pd.fixedCPF * f + pd.co2PP * (sF + sJ + sY);
-    const profit = revenue - cost;
-    return profit > 0 ? {
-      profit,
-      sF,
-      sJ,
-      sY
-    } : null;
-  };
-  // evalOne: find best flight count. profit(f) is concave (served revenue saturates as
-  // flights fill demand, cost is linear), so the first f that fails to improve — whether
-  // a lower profit OR a null (empty, unprofitable flights once demand is exhausted) — is
-  // past the peak. Stopping there is exact and avoids scanning up to rot (huge at short
-  // routes), which is what made anchored short-haul fleets hang.
-  const evalOne = (pd, rF, rJ, rY) => {
-    let best = null;
-    for (let f = 1; f <= pd.rot; f++) {
-      const r = evalOneAt(pd, rF, rJ, rY, f);
-      if (r && (!best || r.profit > best.profit)) best = r;else break; // past the peak (or never profitable, if best is still null)
-    }
-    return best;
-  };
-
-  // Evaluate a candidate fleet. For two-type fleets, try throttled flight counts
-  // on the first type to see if letting the second type mop up is cheaper.
-  const evalFleet = (entries, bgt) => {
-    let totalPurchase = 0;
-    for (const e of entries) {
-      totalPurchase += e.plane["$"] * e.qty;
-      if (bgt < Infinity && totalPurchase > bgt) return {
-        profit: -Infinity
-      };
-    }
-    if (entries.length <= 1) {
-      // Single type: sequential evalOne
-      let rF = rfD,
-        rJ = rjD,
-        rY = ryD,
-        tp = 0;
-      for (let q = 0; q < entries[0].qty; q++) {
-        const r = evalOne(entries[0], rF, rJ, rY);
-        if (!r || r.profit <= 0) break;
-        tp += r.profit;
-        rF -= r.sF;
-        rJ -= r.sJ;
-        rY -= r.sY;
-      }
-      return {
-        profit: tp
-      };
-    }
-
-    // Two types: try each flight count for first type, let rest mop up. ff never needs to
-    // exceed what saturates the first type's demand — beyond that it flies empty (pure cost)
-    // while the second type has no residual left to absorb, so total profit only falls. The
-    // bound is in capacity units (an F seat costs 3 units, J costs 2, Y costs 1): once the
-    // first type's flights supply more units than demanded, it's saturated. This also keeps
-    // the loop short at short routes, where first.rot is very large.
-    const first = entries[0];
-    let bestTotal = -Infinity;
-    let bestFF = 1;
-    const ffMax = Math.min(first.rot, Math.max(1, Math.ceil((3 * rfD + 2 * rjD + ryD) / first.plane.p)));
-    for (let ff = 1; ff <= ffMax; ff++) {
-      let rF = rfD,
-        rJ = rjD,
-        rY = ryD,
-        tp = 0;
-      for (let q = 0; q < first.qty; q++) {
-        const r = evalOneAt(first, rF, rJ, rY, ff);
-        if (!r) break;
-        tp += r.profit;
-        rF -= r.sF;
-        rJ -= r.sJ;
-        rY -= r.sY;
-      }
-      for (let i = 1; i < entries.length; i++) {
-        for (let q = 0; q < entries[i].qty; q++) {
-          const r = evalOne(entries[i], rF, rJ, rY);
-          if (!r || r.profit <= 0) break;
-          tp += r.profit;
-          rF -= r.sF;
-          rJ -= r.sJ;
-          rY -= r.sY;
-        }
-      }
-      if (tp > bestTotal) {
-        bestTotal = tp;
-        bestFF = ff;
-      }
-    }
-    return {
-      profit: bestTotal,
-      ff: bestFF
-    };
-  };
+  // (evalOneAt/evalOne/evalFleet removed in v0.6.6-rc.4 — the search now scores every
+  // candidate with the exact allocator below, so search, ranking, and display share one
+  // set of numbers. The approximate evaluator overstated some fleets by ~0.5-1%, enough
+  // to let them falsely Pareto-dominate true horizon winners.)
 
   // ── Allocation helpers (defined before Step 1 so the complement search can run
   // against the residual demand left after anchors) ──
@@ -1125,126 +1021,6 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
 
   // Track runner-up fleets for display
   const topFleets = [];
-  const noteFleet = (profit, entries) => {
-    if (!(profit > 0)) return;
-    const purchase = entries.reduce((s, e) => s + e.plane["$"] * e.qty, 0);
-    // Pareto pruning: keep a fleet only if no other known fleet is at least as
-    // profitable AND at least as cheap (kills padded variants with idle planes)
-    for (let i = 0; i < topFleets.length; i++) {
-      const t = topFleets[i];
-      if (t.profit >= profit && t.purchase <= purchase) return;
-      if (profit >= t.profit && purchase <= t.purchase) {
-        topFleets.splice(i, 1);
-        i--;
-      }
-    }
-    topFleets.push({
-      key: entries.map(e => e.plane.n + "x" + e.qty).sort().join("|"),
-      profit,
-      purchase,
-      entries,
-      planes: entries.map(e => ({
-        n: e.plane.n,
-        qty: e.qty
-      }))
-    });
-    topFleets.sort((a, b) => b.profit - a.profit);
-    // Cap the frontier, but keep BOTH ends: the highest-profit fleets (no-horizon and
-    // long-horizon winners) AND the cheapest fleets (short-horizon net winners, which sit at
-    // the low-profit end). Truncating by profit alone — as this once did — dropped exactly the
-    // cheap fleets the horizon search needs. Rarely trips at the default pool (frontier stays
-    // small); matters when the pool is widened further.
-    if (topFleets.length > 120) {
-      const cheap = topFleets.slice(90).sort((a, b) => a.purchase - b.purchase).slice(0, 30);
-      topFleets.length = 90;
-      topFleets.push(...cheap);
-    }
-  };
-
-  // Unified search: enumerate 1-type and 2-type fleets
-
-  // Single-type fleets
-  for (const a of top) {
-    let maxQ = Math.min(hasBudget ? Math.floor(budget / a.plane["$"]) : 20, 20);
-    if (mAc > 0) maxQ = Math.min(maxQ, cMaxAc);
-    let prevProfit = -Infinity;
-    for (let q = 1; q <= maxQ; q++) {
-      const {
-        profit
-      } = evalFleet([{
-        ...a,
-        qty: q
-      }], budget);
-      noteFleet(profit, [{
-        ...a,
-        qty: q
-      }]);
-      if (profit > bestProfit) {
-        bestProfit = profit;
-        rawFleet = [{
-          ...a,
-          qty: q
-        }];
-      }
-      if (profit <= prevProfit) break;
-      prevProfit = profit;
-    }
-  }
-
-  // Two-type fleets (skip if max airframes = 1, or single-type mode)
-  if (mAf <= 0 || mAf >= 2) {
-    for (let i = 0; i < top.length; i++) {
-      for (let j = 0; j < top.length; j++) {
-        if (j === i) continue;
-        const a = top[i],
-          b = top[j];
-        let maxQA = Math.min(hasBudget ? Math.floor(budget / a.plane["$"]) : 10, 10);
-        if (mAc > 0) maxQA = Math.min(maxQA, cMaxAc - 1);
-        for (let qA = 1; qA <= maxQA; qA++) {
-          const remBudget = hasBudget ? budget - qA * a.plane["$"] : Infinity;
-          let maxQB = Math.min(hasBudget ? Math.floor(remBudget / b.plane["$"]) : 10, 10);
-          if (mAc > 0) maxQB = Math.min(maxQB, cMaxAc - qA);
-          for (let qB = 1; qB <= maxQB; qB++) {
-            const result = evalFleet([{
-              ...a,
-              qty: qA
-            }, {
-              ...b,
-              qty: qB
-            }], budget);
-            noteFleet(result.profit, [{
-              ...a,
-              qty: qA,
-              rot: result.ff || a.rot
-            }, {
-              ...b,
-              qty: qB
-            }]);
-            if (result.profit > bestProfit) {
-              bestProfit = result.profit;
-              rawFleet = [{
-                ...a,
-                qty: qA,
-                rot: result.ff || a.rot
-              }, {
-                ...b,
-                qty: qB
-              }];
-            }
-          }
-        }
-      }
-    }
-  }
-  if (rawFleet.length === 0 || bestProfit <= 0) {
-    if (!hasAnchors) return fail("No profitable fleet — operating costs exceed revenue at these settings");
-    rawFleet = []; // anchors-only: a valid fleet even with no profitable complement to add
-  }
-
-  // ── Step 2: Allocate seats per aircraft, optimizing flight count ──
-  // (Allocation helpers tmr/cfgForF/bestF/bestFFixed/pushType and the anchor pass are
-  // defined above Step 1 so the complement search can use the post-anchor residual.)
-
   // Single Type + auto-config: the tool controls every seat layout, so a one-type fleet
   // (owned anchors + the complement it buys) must share ONE config. Anchors are sized
   // against full demand and placed first, the complement against the residual, so without
@@ -1309,7 +1085,8 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
       const minMaxRot = all.reduce((m, e) => Math.min(m, tmr(e.plane)), Infinity);
       let bestEqProfit = -Infinity,
         bestEqFleet = null,
-        bestRem = null;
+        bestRem = null,
+        eqDeclines = 0;
       for (let eqF = 1; eqF <= minMaxRot; eqF++) {
         const cand = [];
         let rF = fD,
@@ -1392,7 +1169,13 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
           bestEqProfit = eqProfit;
           bestEqFleet = cand;
           bestRem = [rF, rJ, rY];
+          eqDeclines = 0;
         }
+        // Profit vs shared flight count is unimodal in practice (same shape bestF exploits
+        // with a single-decline break); a 3-decline streak guards plateaus and small ripples
+        // while skipping the long empty tail — the dominant cost at short routes where
+        // minMaxRot is large. Verified output-identical to the full scan across the grid.
+        else if (eqProfit < bestEqProfit && ++eqDeclines >= 3) break;
       }
       if (bestEqFleet) {
         fleet.push(...bestEqFleet);
@@ -1459,6 +1242,120 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
   const splitPurchase = fl => fl.reduce((s, f) => s + (f.anchor ? 0 : f.qty * f.plane["$"]), 0);
   const splitCompProfit = fl => fl.reduce((s, f) => s + (f.anchor ? 0 : f.profitPerDay), 0);
   const anchorSpend = fl => fl.reduce((s, f) => s + (f.anchor ? f.qty * f.plane["$"] : 0), 0);
+
+  // Exact scorer: allocate the candidate with the same machinery that builds the displayed
+  // result (equalize-, anchor-, single-type- and consolidation-aware), then Pareto-prune on
+  // the ALLOCATED complement profit and purchase. Returns the exact profit for best-tracking.
+  const noteFleet = entries => {
+    let nominal = 0;
+    for (const e of entries) {
+      nominal += e.plane["$"] * e.qty;
+      if (nominal > budget) return -Infinity;
+    }
+    const alloc = allocate(entries);
+    const profit = splitCompProfit(alloc.fleet);
+    if (!(profit > 0)) return profit;
+    const purchase = splitPurchase(alloc.fleet);
+    // Pareto pruning: keep a fleet only if no other known fleet is at least as
+    // profitable AND at least as cheap (kills padded variants with idle planes)
+    for (let i = 0; i < topFleets.length; i++) {
+      const t = topFleets[i];
+      if (t.profit >= profit && t.purchase <= purchase) return profit;
+      if (profit >= t.profit && purchase <= t.purchase) {
+        topFleets.splice(i, 1);
+        i--;
+      }
+    }
+    topFleets.push({
+      key: entries.map(e => e.plane.n + "x" + e.qty).sort().join("|"),
+      profit,
+      purchase,
+      entries,
+      planes: entries.map(e => ({
+        n: e.plane.n,
+        qty: e.qty
+      }))
+    });
+    // Frontier stays unsorted during the search — re-sorting on all ~70K insertions was the
+    // dominant cost of exact scoring. It's sorted once after the loops, and on the rare trim.
+    if (topFleets.length > 120) {
+      topFleets.sort((a, b) => b.profit - a.profit);
+      const cheap = topFleets.slice(90).sort((a, b) => a.purchase - b.purchase).slice(0, 30);
+      topFleets.length = 90;
+      topFleets.push(...cheap);
+    }
+    return profit;
+  };
+
+  // Unified search: enumerate 1-type and 2-type fleets
+
+  // Single-type fleets
+  for (const a of top) {
+    let maxQ = Math.min(hasBudget ? Math.floor(budget / a.plane["$"]) : 20, 20);
+    if (mAc > 0) maxQ = Math.min(maxQ, cMaxAc);
+    let prevProfit = -Infinity;
+    for (let q = 1; q <= maxQ; q++) {
+      const profit = noteFleet([{
+        ...a,
+        qty: q
+      }]);
+      if (profit > bestProfit) {
+        bestProfit = profit;
+        rawFleet = [{
+          ...a,
+          qty: q
+        }];
+      }
+      if (profit <= prevProfit) break;
+      prevProfit = profit;
+    }
+  }
+
+  // Two-type fleets (skip if max airframes = 1, or single-type mode)
+  if (mAf <= 0 || mAf >= 2) {
+    for (let i = 0; i < top.length; i++) {
+      for (let j = 0; j < top.length; j++) {
+        if (j === i) continue;
+        const a = top[i],
+          b = top[j];
+        let maxQA = Math.min(hasBudget ? Math.floor(budget / a.plane["$"]) : 10, 10);
+        if (mAc > 0) maxQA = Math.min(maxQA, cMaxAc - 1);
+        for (let qA = 1; qA <= maxQA; qA++) {
+          const remBudget = hasBudget ? budget - qA * a.plane["$"] : Infinity;
+          let maxQB = Math.min(hasBudget ? Math.floor(remBudget / b.plane["$"]) : 10, 10);
+          if (mAc > 0) maxQB = Math.min(maxQB, cMaxAc - qA);
+          for (let qB = 1; qB <= maxQB; qB++) {
+            const entries = [{
+              ...a,
+              qty: qA
+            }, {
+              ...b,
+              qty: qB
+            }];
+            const profit = noteFleet(entries);
+            if (profit > bestProfit) {
+              bestProfit = profit;
+              rawFleet = entries;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Consumers (ranking, alternatives) expect the frontier profit-descending; sorted once here.
+  topFleets.sort((a, b) => b.profit - a.profit);
+  if (rawFleet.length === 0 || bestProfit <= 0) {
+    if (!hasAnchors) return fail("No profitable fleet — operating costs exceed revenue at these settings");
+    rawFleet = []; // anchors-only: a valid fleet even with no profitable complement to add
+  }
+
+  // ── Step 2: Allocate seats per aircraft, optimizing flight count ──
+  // (Allocation helpers tmr/cfgForF/bestF/bestFFixed/pushType and the anchor pass are
+  // defined above Step 1 so the complement search can use the post-anchor residual.)
+
+  // (unifyAutoConfig, allocate, and the split helpers are hoisted above Step 1 in
+  // v0.6.6-rc.4 — the search scores candidates by calling allocate directly.)
   // Label a fleet by its real bought combo (ground truth post-allocation), not the
   // pre-allocation candidate — a candidate's second type can end up unneeded once
   // allocation runs, and showing it anyway misrepresents what's actually in the fleet.
@@ -1965,7 +1862,7 @@ function FleetOptimizer() {
     jD = Math.floor(n(jDem) * r / 100),
     fD = Math.floor(n(fDem) * r / 100);
   const advCount = [fuelKPrice !== 700, co2Quota !== 120, maxRunway != null, maxPlanePrice != null, maxFleetPrice != null, minAircraft != null, maxAircraft != null, maxAirframes != null, horizon != null].filter(Boolean).length;
-  const VERSION = "v0.6.6-rc.3";
+  const VERSION = "v0.6.6-rc.4";
   const isRC = /-rc/.test(VERSION); // dev tooling (compute readout + benchmark) shows only in RC builds
 
   // ── Dev benchmark (RC only): time a fixed scenario suite in the worker, off the UI thread,
