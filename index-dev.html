@@ -52,6 +52,14 @@ const fmtN = n => n.toLocaleString();
 // Math.floor(y*1.1) / Math.floor(j*1.08) / Math.floor(f*1.06)) — yP/jP/fP below already
 // include the markup, so a plain floor matches the game exactly.
 const fmtPrice = n => `$${Math.floor(n)}`;
+// Single-flight duration, always (h)h:mm:ss — no truncated units, no leading zero on hours.
+const fmtDuration = hrs => {
+  const t = Math.round(hrs * 3600);
+  const h = Math.floor(t / 3600),
+    m = Math.floor(t % 3600 / 60),
+    s = t % 60;
+  return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+};
 // px-equivalent values expressed in rem so the UI scales with root font size
 const rem = (...v) => v.map(x => x === 0 ? "0" : `${x / 16}rem`).join(" ");
 const MFRS = [...new Set(P.map(p => p.m))].sort();
@@ -1862,7 +1870,7 @@ function FleetOptimizer() {
     jD = Math.floor(n(jDem) * r / 100),
     fD = Math.floor(n(fDem) * r / 100);
   const advCount = [fuelKPrice !== 700, co2Quota !== 120, maxRunway != null, maxPlanePrice != null, maxFleetPrice != null, minAircraft != null, maxAircraft != null, maxAirframes != null, horizon != null].filter(Boolean).length;
-  const VERSION = "v0.6.6-rc.4";
+  const VERSION = "v0.6.6-rc.4.1";
   const isRC = /-rc/.test(VERSION); // dev tooling (compute readout + benchmark) shows only in RC builds
 
   // ── Dev benchmark (RC only): time a fixed scenario suite in the worker, off the UI thread,
@@ -2659,7 +2667,7 @@ function FleetOptimizer() {
     style: {
       color: "#555"
     }
-  }, " · ", f.redundant ? "redundant 0/d" : `${f.rot}${f.maxRot && f.rot < f.maxRot ? `/${f.maxRot}` : ""}/d`, " · ", f.profitPerDay < 0 ? "−" + fmt(-f.profitPerDay) : fmt(f.profitPerDay), "/day")))))), computing && /*#__PURE__*/React.createElement("div", {
+  }, " · ", f.redundant ? `redundant 0/${f.maxRot}/d` : `${f.rot}/${f.maxRot}/d`, " · ", f.profitPerDay < 0 ? "−" + fmt(-f.profitPerDay) : fmt(f.profitPerDay), "/day")))))), computing && /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
       padding: rem(20, 0),
@@ -2990,11 +2998,16 @@ function FleetOptimizer() {
     style: {
       color: "#c86"
     }
-  }, "redundant · 0 flights/day") : /*#__PURE__*/React.createElement(React.Fragment, null, f.rot, f.maxRot && f.rot < f.maxRot ? /*#__PURE__*/React.createElement("span", {
+  }, "redundant · 0/", f.maxRot, "/d") : /*#__PURE__*/React.createElement(React.Fragment, null, f.rot, /*#__PURE__*/React.createElement("span", {
     style: {
       color: "#555"
     }
-  }, "/", f.maxRot) : "", "/d")), /*#__PURE__*/React.createElement("td", {
+  }, "/", f.maxRot), "/d"), dist > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: "#444",
+      fontSize: rem(10)
+    }
+  }, fmtDuration(dist / (f.plane.s * (mode === "easy" ? 1.5 : 1))), "/flight")), /*#__PURE__*/React.createElement("td", {
     style: {
       padding: rem(8),
       color: f.profitPerDay < 0 ? "#c66" : "#7c8"
@@ -3083,7 +3096,7 @@ function FleetOptimizer() {
     style: {
       color: "#555"
     }
-  }, " · ", f.redundant ? "redundant 0/d" : `${f.rot}${f.maxRot && f.rot < f.maxRot ? `/${f.maxRot}` : ""}/d`, " · ", f.profitPerDay < 0 ? "−" + fmt(-f.profitPerDay) : fmt(f.profitPerDay), "/day"))), lockedA && activeComp && activeComp.id === alt && /*#__PURE__*/React.createElement("div", {
+  }, " · ", f.redundant ? `redundant 0/${f.maxRot}/d` : `${f.rot}/${f.maxRot}/d`, " · ", f.profitPerDay < 0 ? "−" + fmt(-f.profitPerDay) : fmt(f.profitPerDay), "/day"))), lockedA && activeComp && activeComp.id === alt && /*#__PURE__*/React.createElement("div", {
     style: {
       paddingBottom: rem(8)
     }
