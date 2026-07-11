@@ -1565,7 +1565,7 @@ export default function FleetOptimizer() {
                         {f.redundant
                           ? <span style={{ color: "#c86" }}>redundant · 0/{f.maxRot}/d</span>
                           : <>{f.rot}<span style={{ color: "#555" }}>/{f.maxRot}</span>/d</>}
-                        {dist > 0 && <div style={{ color: "#444", fontSize: rem(10) }}>{fmtDuration(dist / (f.plane.s * (mode === "easy" ? 1.5 : 1)))}/flight</div>}
+                        {dist > 0 && <div style={{ color: "#444", fontSize: rem(10) }}>{fmtDuration(dist / (f.plane.s * (mode === "easy" ? 1.5 : 1)))}</div>}
                       </td>
                       <td style={{ padding: rem(8), color: f.profitPerDay < 0 ? "#c66" : "#7c8" }}>{f.profitPerDay < 0 ? "−" + fmt(-f.profitPerDay) : fmt(f.profitPerDay)}</td>
                       <td style={{ padding: rem(8), color: "#c66", fontSize: rem(11) }}>{fmt(f.costPerDay)}</td>
