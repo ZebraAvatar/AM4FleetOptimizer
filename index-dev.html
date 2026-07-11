@@ -1248,12 +1248,25 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
   // Anchors are sunk: purchase cost and payback count only the complement (the new buy).
   // Profit shown is the whole fleet (anchors contribute operating profit, possibly a loss).
   const splitPurchase = fl => fl.reduce((s, f) => s + (f.anchor ? 0 : f.qty * f.plane["$"]), 0);
-  const splitCompProfit = fl => fl.reduce((s, f) => s + (f.anchor ? 0 : f.profitPerDay), 0);
   const anchorSpend = fl => fl.reduce((s, f) => s + (f.anchor ? f.qty * f.plane["$"] : 0), 0);
+  const totalFleetProfit = fl => fl.reduce((s, f) => s + f.profitPerDay, 0);
+  // Under Equalize, an owned anchor's flight share (and so its profit share) SHRINKS as more
+  // complement planes join the equalized split — the fixed, demand-capped total gets divided
+  // more ways. splitCompProfit (the old per-row anchor-flag split) mistook that shrinkage for
+  // the complement "earning" whatever share it absorbed, so buying more planes could look more
+  // profitable even when total fleet profit hadn't moved at all — demand was already saturated
+  // by the anchor alone, and the extra purchase(s) added pure cost with zero real benefit.
+  // ownedOnlyProfit is what the owned planes alone (their own best allocation, no purchase)
+  // already earn; marginalProfit is a candidate's benefit ABOVE that stable baseline — the true
+  // answer to "does buying this add anything?", immune to how equalize splits the flight count.
+  const ownedOnlyProfit = hasAnchors ? totalFleetProfit(allocate([]).fleet) : 0;
+  const marginalProfit = fl => totalFleetProfit(fl) - ownedOnlyProfit;
 
   // Exact scorer: allocate the candidate with the same machinery that builds the displayed
   // result (equalize-, anchor-, single-type- and consolidation-aware), then Pareto-prune on
-  // the ALLOCATED complement profit and purchase. Returns the exact profit for best-tracking.
+  // the ALLOCATED marginal profit and purchase. Returns the exact marginal profit for
+  // best-tracking, so a purchase that adds nothing over the owned-only baseline scores ≤0 and
+  // is never mistaken for a win.
   const noteFleet = entries => {
     let nominal = 0;
     for (const e of entries) {
@@ -1261,7 +1274,7 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
       if (nominal > budget) return -Infinity;
     }
     const alloc = allocate(entries);
-    const profit = splitCompProfit(alloc.fleet);
+    const profit = marginalProfit(alloc.fleet);
     if (!(profit > 0)) return profit;
     const purchase = splitPurchase(alloc.fleet);
     // Pareto pruning: keep a fleet only if no other known fleet is at least as
@@ -1490,7 +1503,7 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
       planes: fleetLabel(fleet),
       purchase: splitPurchase(fleet),
       profit: fleet.reduce((s, f) => s + f.profitPerDay, 0),
-      payProfit: splitCompProfit(fleet),
+      payProfit: marginalProfit(fleet),
       fleet,
       remF: a0.remF,
       remJ: a0.remJ,
@@ -1870,7 +1883,7 @@ function FleetOptimizer() {
     jD = Math.floor(n(jDem) * r / 100),
     fD = Math.floor(n(fDem) * r / 100);
   const advCount = [fuelKPrice !== 700, co2Quota !== 120, maxRunway != null, maxPlanePrice != null, maxFleetPrice != null, minAircraft != null, maxAircraft != null, maxAirframes != null, horizon != null].filter(Boolean).length;
-  const VERSION = "v0.6.6-rc.4.1";
+  const VERSION = "v0.6.6-rc.5";
   const isRC = /-rc/.test(VERSION); // dev tooling (compute readout + benchmark) shows only in RC builds
 
   // ── Dev benchmark (RC only): time a fixed scenario suite in the worker, off the UI thread,
@@ -3007,7 +3020,7 @@ function FleetOptimizer() {
       color: "#444",
       fontSize: rem(10)
     }
-  }, fmtDuration(dist / (f.plane.s * (mode === "easy" ? 1.5 : 1))), "/flight")), /*#__PURE__*/React.createElement("td", {
+  }, fmtDuration(dist / (f.plane.s * (mode === "easy" ? 1.5 : 1))))), /*#__PURE__*/React.createElement("td", {
     style: {
       padding: rem(8),
       color: f.profitPerDay < 0 ? "#c66" : "#7c8"
