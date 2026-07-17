@@ -319,9 +319,16 @@ function CompPanel({ a, aLabel, b, bLabel }) {
 
 function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers, horizon, anchors, anchorAutoConfig, minAircraft) {
   const d = n(dist), r = n(rep) || 100;
-  const yD = Math.floor(n(yDem) * r / 100);
-  const jD = Math.floor(n(jDem) * r / 100);
-  const fD = Math.floor(n(fDem) * r / 100);
+  // Reputation caps how full any SINGLE plane can fly — it does not shrink the route. The
+  // route's demand stays at face value and remains a hard daily ceiling; you simply need more
+  // seats in the air to reach it, because each plane only fills to `rf` of its capacity.
+  // (Scaling demand by rep instead — as this once did — inverted the advice: it told you to buy
+  // FEWER planes at low reputation, when the game actually requires MORE to capture the same
+  // passengers.) At rep=100, rf=1 and every formula below reduces exactly to the old one.
+  const rf = r / 100;
+  const yD = Math.floor(n(yDem));
+  const jD = Math.floor(n(jDem));
+  const fD = Math.floor(n(fDem));
   const fP_ = n(fuelKPrice) / 1000, cP_ = n(co2Quota) / 1000, oH = n(opHrs);
   const mRw = n(maxRunway), mPp = n(maxPlanePrice), mFp = n(maxFleetPrice);
   const mAc = n(maxAircraft), mAf = n(maxAirframes), mMin = n(minAircraft);
@@ -340,7 +347,9 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
   const jP = (pr.j[0] * d + pr.j[1]) * MARKUP.j;
   const fP = (pr.f[0] * d + pr.f[1]) * MARKUP.f;
 
-  const totalCapNeeded = yD + 2 * jD + 3 * fD;
+  // Seat-units that must be IN THE AIR each day to capture demand. At rep<100 planes fly
+  // partly empty, so this exceeds the raw demand units by 1/rf.
+  const totalCapNeeded = Math.ceil((yD + 2 * jD + 3 * fD) / rf);
 
   const fail = (reason) => ({ fleet: [], summary: null, reason });
 
@@ -430,12 +439,16 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
   // planes sharing one config at given per-plane flight counts, merging identical rows;
   // with keepIdle it also emits 0-flight "redundant" rows for owned anchors not needed here.
   const tmr = (plane) => Math.min(Math.ceil(oH * spd(plane) / d), Math.max(1, Math.floor(24 * spd(plane) / d)));
+  // Passengers actually carried by `seats` seats across `F` flights, after the reputation fill
+  // cap. Reduces to the bare seats*F at rep=100. Seats-needed is its inverse: ceil(demand/(F*rf)).
+  const pax = (seats, F) => Math.floor(seats * F * rf);
+  const seatsFor = (demand, F) => Math.ceil(demand / (F * rf));
   const cfgForF = (plane, fixedCPF, co2PP, F, aF, aJ, aY) => {
-    const fs = Math.min(Math.floor(plane.p / 3), aF > 0 ? Math.ceil(aF / F) : 0);
+    const fs = Math.min(Math.floor(plane.p / 3), aF > 0 ? seatsFor(aF, F) : 0);
     const capF = plane.p - 3 * fs;
-    const js = Math.min(Math.floor(capF / 2), aJ > 0 ? Math.ceil(aJ / F) : 0);
+    const js = Math.min(Math.floor(capF / 2), aJ > 0 ? seatsFor(aJ, F) : 0);
     const ys = capF - 2 * js;
-    const sF = Math.min(fs * F, aF), sJ = Math.min(js * F, aJ), sY = Math.min(ys * F, aY);
+    const sF = Math.min(pax(fs, F), aF), sJ = Math.min(pax(js, F), aJ), sY = Math.min(pax(ys, F), aY);
     const rev = sF * fP + sJ * jP + sY * yP;
     const cost = fixedCPF * F + co2PP * (sF + sJ + sY);
     return { fs, js, ys, sF, sJ, sY, rev, cost, profit: rev - cost, occupied: fs + js + ys > 0 };
@@ -451,7 +464,7 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
     return best;
   };
   const cfgFixedAt = (fixedCPF, co2PP, fs, js, ys, F, aF, aJ, aY) => {
-    const sF = Math.min(fs * F, aF), sJ = Math.min(js * F, aJ), sY = Math.min(ys * F, aY);
+    const sF = Math.min(pax(fs, F), aF), sJ = Math.min(pax(js, F), aJ), sY = Math.min(pax(ys, F), aY);
     const rev = sF * fP + sJ * jP + sY * yP;
     const cost = fixedCPF * F + co2PP * (sF + sJ + sY);
     return { fs, js, ys, sF, sJ, sY, rev, cost, profit: rev - cost, occupied: fs + js + ys > 0 };
@@ -480,7 +493,7 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
         }
         continue;
       }
-      const pF = Math.min(c.fs * cnt, tF), pJ = Math.min(c.js * cnt, tJ), pY = Math.min(c.ys * cnt, tY);
+      const pF = Math.min(pax(c.fs, cnt), tF), pJ = Math.min(pax(c.js, cnt), tJ), pY = Math.min(pax(c.ys, cnt), tY);
       tF -= pF; tJ -= pJ; tY -= pY;
       const rev = pF * fP + pJ * jP + pY * yP;
       const cost = fixedCPF * cnt + co2PP * (pF + pJ + pY);
@@ -549,7 +562,7 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
   // nothing. The floor is demand-relative: thin routes still admit small planes (viable there),
   // heavy routes trim them (they'd be useless anyway). It applies only to the cheap picks; the
   // cost-efficient picks are large by construction and never trip this.
-  const dUnits = 3 * rfD + 2 * rjD + ryD;
+  const dUnits = (3 * rfD + 2 * rjD + ryD) / rf;
   const cheapMinCap = dUnits > 0 ? dUnits / 30 : 0;
   const byPrice = [...affordable].filter((pd) => pd.plane.p >= cheapMinCap).sort((a, b) => a.plane["$"] - b.plane["$"]);
   const seenTop = new Set();
@@ -1141,12 +1154,12 @@ export default function FleetOptimizer() {
 
   const s = result.summary;
   const r = n(rep) || 100;
-  const yD = Math.floor(n(yDem) * r / 100), jD = Math.floor(n(jDem) * r / 100), fD = Math.floor(n(fDem) * r / 100);
+  const yD = Math.floor(n(yDem)), jD = Math.floor(n(jDem)), fD = Math.floor(n(fDem));
 
   const advCount = [fuelKPrice !== 700, co2Quota !== 120, maxRunway != null, maxPlanePrice != null,
     maxFleetPrice != null, minAircraft != null, maxAircraft != null, maxAirframes != null, horizon != null].filter(Boolean).length;
 
-  const VERSION = "v0.6.6-rc.5";
+  const VERSION = "v0.6.6-rc.6";
   const isRC = /-rc/.test(VERSION); // dev tooling (compute readout + benchmark) shows only in RC builds
 
   // ── Dev benchmark (RC only): time a fixed scenario suite in the worker, off the UI thread,
@@ -1541,7 +1554,7 @@ export default function FleetOptimizer() {
           </div>
 
           <div style={{ fontSize: rem(11), color: "#555", marginBottom: rem(14) }}>
-            Tickets: Y={fmtPrice(s.yPrice)} · J={fmtPrice(s.jPrice)} · F={fmtPrice(s.fPrice)}<br />Capacity needed: {fmtN(s.totalCapNeeded)} units/day ({fmtN(yD)}×1 + {fmtN(jD)}×2 + {fmtN(fD)}×3)
+            Tickets: Y={fmtPrice(s.yPrice)} · J={fmtPrice(s.jPrice)} · F={fmtPrice(s.fPrice)}<br />Capacity needed: {fmtN(s.totalCapNeeded)} seats/day ({fmtN(yD)}×1 + {fmtN(jD)}×2 + {fmtN(fD)}×3{r < 100 ? ` ÷ ${r}% rep` : ""})
           </div>
 
           {result.fleet.length > 0 && (
