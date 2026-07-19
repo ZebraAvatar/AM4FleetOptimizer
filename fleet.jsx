@@ -317,7 +317,7 @@ function CompPanel({ a, aLabel, b, bLabel }) {
   );
 }
 
-function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers, horizon, anchors, anchorAutoConfig, minAircraft) {
+function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers, horizon, anchors, anchorAutoConfig, minAircraft, maxFlightsPerAircraft) {
   const d = n(dist), r = n(rep) || 100;
   // Reputation caps how full any SINGLE plane can fly — it does not shrink the route. The
   // route's demand stays at face value and remains a hard daily ceiling; you simply need more
@@ -331,7 +331,7 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
   const fD = Math.floor(n(fDem));
   const fP_ = n(fuelKPrice) / 1000, cP_ = n(co2Quota) / 1000, oH = n(opHrs);
   const mRw = n(maxRunway), mPp = n(maxPlanePrice), mFp = n(maxFleetPrice);
-  const mAc = n(maxAircraft), mAf = n(maxAirframes), mMin = n(minAircraft);
+  const mAc = n(maxAircraft), mAf = n(maxAirframes), mMin = n(minAircraft), mFpa = n(maxFlightsPerAircraft);
   const eq = !!equalize, stp = stopovers ? 2 : 1;
   // Easy mode flies aircraft at 1.5x their listed speed; Realism uses base speed. This
   // raises daily flight count and shortens flight time (lowering the time-based A-check
@@ -406,7 +406,8 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
 
   const planeData = mfrOK
     .map((p) => {
-      const rot = Math.min(Math.ceil(oH * spd(p) / d), Math.max(1, Math.floor(24 * spd(p) / d))); // sustainable daily flights
+      let rot = Math.min(Math.ceil(oH * spd(p) / d), Math.max(1, Math.floor(24 * spd(p) / d))); // sustainable daily flights
+      if (mFpa > 0) rot = Math.min(rot, mFpa); // honor the per-aircraft flight cap in ranking, matching tmr
       if (rot <= 0) return null;
       // Fixed costs (fuel + A-check): per flight, independent of passengers
       const fixedCPF = (p.f * spd(p) * fP_ + p.a / p.h) * d / spd(p);
@@ -438,7 +439,17 @@ function optimizeFleet(dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs
   // never flies at an operating loss in normal mode — it parks). pushType emits a type's
   // planes sharing one config at given per-plane flight counts, merging identical rows;
   // with keepIdle it also emits 0-flight "redundant" rows for owned anchors not needed here.
-  const tmr = (plane) => Math.min(Math.ceil(oH * spd(plane) / d), Math.max(1, Math.floor(24 * spd(plane) / d)));
+  // Max rotations one plane of this type can fly today: limited by operating hours, the hard
+  // 24h dispatch ceiling, and — when set — the user's per-aircraft flight cap. Because every
+  // flight-count decision downstream flows through tmr, capping here alone spreads demand across
+  // more planes as needed; the profit search still declines to add planes that don't earn their
+  // keep. Applies to all planes, owned anchors included — a per-aircraft flight limit is a
+  // property of operating the aircraft on the route, independent of ownership.
+  const tmr = (plane) => {
+    let mr = Math.min(Math.ceil(oH * spd(plane) / d), Math.max(1, Math.floor(24 * spd(plane) / d)));
+    if (mFpa > 0) mr = Math.min(mr, mFpa);
+    return mr;
+  };
   // Passengers actually carried by `seats` seats across `F` flights, after the reputation fill
   // cap. Reduces to the bare seats*F at rep=100. Seats-needed is its inverse: ceil(demand/(F*rf)).
   const pax = (seats, F) => Math.floor(seats * F * rf);
@@ -1052,6 +1063,7 @@ export default function FleetOptimizer() {
   const [maxAircraft, setMaxAircraft] = useState(saved.maxAircraft ?? null);
   const [maxAirframes, setMaxAirframes] = useState(saved.maxAirframes ?? null);
   const [minAircraft, setMinAircraft] = useState(saved.minAircraft ?? null);
+  const [maxFlightsPerAircraft, setMaxFlightsPerAircraft] = useState(saved.maxFlightsPerAircraft ?? null);
   const [equalize, setEqualize] = useState(saved.equalize ?? false);
   const [stopovers, setStopover] = useState(saved.stopovers ?? false);
   const [horizon, setHorizon] = useState(saved.horizon ?? null);
@@ -1084,7 +1096,7 @@ export default function FleetOptimizer() {
     setYDem(null); setJDem(null); setFDem(null);
     setMaxRunway(null); setMaxPlanePrice(null); setMaxFleetPrice(null);
     setRep(null); setExcludedMfrs(new Set());
-    setMaxAircraft(null); setMaxAirframes(null); setMinAircraft(null);
+    setMaxAircraft(null); setMaxAirframes(null); setMinAircraft(null); setMaxFlightsPerAircraft(null);
     setEqualize(false); setStopover(false);
     setHorizon(null);
     setAnchors([]); setAnchorAutoConfig(false);
@@ -1094,9 +1106,9 @@ export default function FleetOptimizer() {
   useEffect(() => {
     saveInputs({ v: 1, dist, mode, fuelKPrice, co2Quota, opHrs, yDem, jDem, fDem,
       maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs: [...excludedMfrs],
-      maxAircraft, maxAirframes, minAircraft, equalize, stopovers, horizon, anchors, anchorAutoConfig });
+      maxAircraft, maxAirframes, minAircraft, maxFlightsPerAircraft, equalize, stopovers, horizon, anchors, anchorAutoConfig });
   }, [dist, mode, fuelKPrice, co2Quota, opHrs, yDem, jDem, fDem, maxRunway, maxPlanePrice,
-      maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, minAircraft, equalize,
+      maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, minAircraft, maxFlightsPerAircraft, equalize,
       stopovers, horizon, anchors, anchorAutoConfig]);
 
   // ── Anchor list helpers ──
@@ -1137,7 +1149,7 @@ export default function FleetOptimizer() {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
       const anchorsData = validAnchors.map((a) => ({ n: a.n, qty: n(a.qty) > 0 ? n(a.qty) : 1, f: a.f == null ? null : n(a.f), j: a.j == null ? null : n(a.j), y: a.y == null ? null : n(a.y) }));
-      const params = [dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, [...excludedMfrs], maxAircraft, maxAirframes, equalize, stopovers, horizon, anchorsData, anchorAutoConfig, minAircraft];
+      const params = [dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, [...excludedMfrs], maxAircraft, maxAirframes, equalize, stopovers, horizon, anchorsData, anchorAutoConfig, minAircraft, maxFlightsPerAircraft];
       if (workerRef.current) {
         genRef.current++; setComputing(true);
         workerRef.current.postMessage({ gen: genRef.current, params });
@@ -1150,16 +1162,16 @@ export default function FleetOptimizer() {
       }
     }, 250);
     return () => clearTimeout(timerRef.current);
-  }, [dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers, horizon, anchors, anchorAutoConfig, minAircraft]);
+  }, [dist, yDem, jDem, fDem, mode, fuelKPrice, co2Quota, opHrs, maxRunway, maxPlanePrice, maxFleetPrice, rep, excludedMfrs, maxAircraft, maxAirframes, equalize, stopovers, horizon, anchors, anchorAutoConfig, minAircraft, maxFlightsPerAircraft]);
 
   const s = result.summary;
   const r = n(rep) || 100;
   const yD = Math.floor(n(yDem)), jD = Math.floor(n(jDem)), fD = Math.floor(n(fDem));
 
   const advCount = [fuelKPrice !== 700, co2Quota !== 120, maxRunway != null, maxPlanePrice != null,
-    maxFleetPrice != null, minAircraft != null, maxAircraft != null, maxAirframes != null, horizon != null].filter(Boolean).length;
+    maxFleetPrice != null, minAircraft != null, maxAircraft != null, maxAirframes != null, maxFlightsPerAircraft != null, horizon != null].filter(Boolean).length;
 
-  const VERSION = "v0.6.6-rc.6";
+  const VERSION = "v0.6.6-rc.7";
   const isRC = /-rc/.test(VERSION); // dev tooling (compute readout + benchmark) shows only in RC builds
 
   // ── Dev benchmark (RC only): time a fixed scenario suite in the worker, off the UI thread,
@@ -1368,6 +1380,7 @@ export default function FleetOptimizer() {
             <NumInput label="Max Fleet $" value={maxFleetPrice} onChange={setMaxFleetPrice} placeholder="unlimited" />
             <NumInput label="Min # Aircraft" value={minAircraft} onChange={setMinAircraft} placeholder="none" />
             <NumInput label="Max # Aircraft" value={maxAircraft} onChange={setMaxAircraft} placeholder="unlimited" />
+            <NumInput label="Max Flights/Aircraft" value={maxFlightsPerAircraft} onChange={setMaxFlightsPerAircraft} placeholder="unlimited" />
             <NumInput label="Max Aircraft Types" value={maxAirframes} onChange={setMaxAirframes} placeholder="unlimited" />
             <NumInput label="Best fleet after (days)" value={horizon} onChange={setHorizon} placeholder="unlimited" />
           </div>
